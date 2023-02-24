@@ -43,13 +43,14 @@ jobs:
       - name: Run linter
         run: cargo clippy -- -D warnings
 
-  coverage:
-    name: Code coverage
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v3
-      - uses: dtolnay/rust-toolchain@stable
-      - name: Install tarpaulin
-        run: cargo install cargo-tarpaulin
-      - name: Generate code coverage
-        run: cargo tarpaulin --verbose --workspace
+# Commented out to reduce pipeline run time
+#  coverage:
+#    name: Code coverage
+#    runs-on: ubuntu-latest
+#    steps:
+#      - uses: actions/checkout@v3
+#      - uses: dtolnay/rust-toolchain@stable
+#      - name: Install tarpaulin
+#        run: cargo install cargo-tarpaulin
+#      - name: Generate code coverage
+#        run: cargo tarpaulin --verbose --workspace
