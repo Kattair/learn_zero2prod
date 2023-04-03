@@ -1,27 +1,64 @@
-use reqwest::{header, StatusCode};
-use sqlx::{PgConnection, Connection};
-use zero2prod::configuration::get_configuration;
 use std::net::TcpListener;
+
+use reqwest::{header, StatusCode};
+use sqlx::{Connection, Executor, PgConnection, PgPool};
+use uuid::Uuid;
+
+use zero2prod::configuration::{get_configuration, DatabaseSettings};
+
+pub struct TestApp {
+    pub app_address: String,
+    pub connection_pool: PgPool,
+}
 
 /// Starts an instance of this app in the background and returns the address it's running at
 /// e.g. "127.0.0.1:8000"
-fn spawn_app() -> String {
+async fn spawn_app() -> TestApp {
     let tcp_listener = TcpListener::bind("127.0.0.1:0").expect("Failed to bind random port.");
-    let address = tcp_listener.local_addr().unwrap().to_string();
-    let server = zero2prod::startup::run(tcp_listener).expect("Failed to bind address.");
+    let app_address = tcp_listener.local_addr().unwrap().to_string();
+
+    let mut configuration = get_configuration().expect("Failed to read configuration.");
+    configuration.database.database_name = Uuid::new_v4().to_string();
+    let connection_pool = configure_db(&configuration.database).await;
+
+    let server = zero2prod::startup::run(tcp_listener, connection_pool.clone())
+        .expect("Failed to bind address.");
 
     tokio::spawn(server);
 
-    address
+    TestApp {
+        app_address,
+        connection_pool,
+    }
+}
+
+async fn configure_db(config: &DatabaseSettings) -> PgPool {
+    let mut connection = PgConnection::connect(&config.connection_string_without_db())
+        .await
+        .expect("Failed to connect to Postgres.");
+    connection
+        .execute(format!(r#"CREATE DATABASE "{}""#, &config.database_name).as_str())
+        .await
+        .expect("Failed to create database.");
+
+    let connection_pool = PgPool::connect(&config.connection_string())
+        .await
+        .expect("Failed to connect to Postgres");
+    sqlx::migrate!("./migrations")
+        .run(&connection_pool)
+        .await
+        .expect("Failed to migrate the database.");
+
+    connection_pool
 }
 
 #[tokio::test]
 async fn health_check_works() {
-    let app_address = spawn_app();
+    let app = spawn_app().await;
     let client = reqwest::Client::new();
 
     let response = client
-        .get(format!("http://{}/health_check", &app_address))
+        .get(format!("http://{}/health_check", &app.app_address))
         .send()
         .await
         .expect("Failed to execute request.");
@@ -32,16 +69,12 @@ async fn health_check_works() {
 
 #[tokio::test]
 async fn subscribe_returns_200_when_valid_form_data() {
-    let app_address = spawn_app();
-    let configuration = get_configuration().expect("Failed to read configuration");
-    let mut connection = PgConnection::connect(&configuration.database.connection_string())
-        .await
-        .expect("Failed to connect to Postgres");
+    let app = spawn_app().await;
     let client = reqwest::Client::new();
 
     let body = "name=le%20guin&email=ursula_le_guin%40gmail.com";
     let response = client
-        .post(format!("http://{}/subscriptions", &app_address))
+        .post(format!("http://{}/subscriptions", &app.app_address))
         .header(header::CONTENT_TYPE, "application/x-www-form-urlencoded")
         .body(body)
         .send()
@@ -51,7 +84,7 @@ async fn subscribe_returns_200_when_valid_form_data() {
     assert_eq!(StatusCode::OK, response.status());
 
     let saved = sqlx::query!("SELECT email, name FROM t_subscriptions")
-        .fetch_one(&mut connection)
+        .fetch_one(&app.connection_pool)
         .await
         .expect("Failed to fetch saved subscription");
 
@@ -61,7 +94,7 @@ async fn subscribe_returns_200_when_valid_form_data() {
 
 #[tokio::test]
 async fn subscribe_returns_400_when_data_is_missing() {
-    let app_address = spawn_app();
+    let app = spawn_app().await;
     let client = reqwest::Client::new();
     // TODO: look at 'rstest' crate
     let test_cases = vec![
@@ -72,7 +105,7 @@ async fn subscribe_returns_400_when_data_is_missing() {
 
     for (invalid_body, error_message) in test_cases {
         let response = client
-            .post(format!("http://{}/subscriptions", &app_address))
+            .post(format!("http://{}/subscriptions", &app.app_address))
             .header(header::CONTENT_TYPE, "application/x-www-form-urlencoded")
             .body(invalid_body)
             .send()
