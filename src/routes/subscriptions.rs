@@ -4,7 +4,6 @@ use actix_web::{
 };
 use chrono::Utc;
 use sqlx::PgPool;
-use tracing::Instrument;
 use uuid::Uuid;
 
 #[derive(serde::Deserialize)]
@@ -13,18 +12,29 @@ pub struct FormData {
     name: String,
 }
 
+#[tracing::instrument(
+    name = "Adding new subscriber",
+    skip(form, connection_pool),
+    fields(
+        request_id = %Uuid::new_v4(),
+        subsceriber_name = %form.name,
+        subsceriber_email = %form.email))]
 pub async fn subscribe(form: Form<FormData>, connection_pool: web::Data<PgPool>) -> HttpResponse {
-    let request_id = Uuid::new_v4();
-    let request_span = tracing::info_span!(
-        "Adding new subscriber",
-        %request_id,
-        name = %form.name,
-        email = %form.email
-    );
-    let _request_span_guard = request_span.enter();
+    match insert_subscriber(&form, &connection_pool).await {
+        Ok(_) => HttpResponse::Ok().finish(),
+        Err(_) => HttpResponse::InternalServerError().finish(),
+    }
+}
 
-    let query_span = tracing::info_span!("Persisting new subscriber detail in database");
-    match sqlx::query!(
+#[tracing::instrument(
+    name = "Persisting new subscriber details in database",
+    skip(form, connection_pool)
+)]
+pub async fn insert_subscriber(
+    form: &FormData,
+    connection_pool: &PgPool,
+) -> Result<(), sqlx::Error> {
+    sqlx::query!(
         r#"
             INSERT INTO t_subscriptions (id, email, name, subscribed_at)
             VALUES ($1, $2, $3, $4)
@@ -34,21 +44,13 @@ pub async fn subscribe(form: Form<FormData>, connection_pool: web::Data<PgPool>)
         form.name,
         Utc::now().naive_utc()
     )
-    .execute(connection_pool.get_ref())
-    .instrument(query_span)
+    .execute(connection_pool)
     .await
-    {
-        Ok(_) => {
-            tracing::info!("request_id {} - New subscriber persisted.", request_id);
-            HttpResponse::Ok().finish()
-        }
-        Err(e) => {
-            tracing::error!(
-                "request_id {} - Failed to persist new subscriber: {:?}",
-                request_id,
-                e
-            ); // careful with GDPR, this logs email when unique constraint errors
-            HttpResponse::InternalServerError().finish()
-        }
-    }
+    .map_err(|e| {
+        // careful with GDPR, this logs email when unique constraint errors
+        tracing::error!("Failed to persist new subscriber: {:?}", e);
+        e
+    })?;
+
+    Ok(())
 }
