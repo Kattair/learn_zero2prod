@@ -16,9 +16,8 @@ pub struct FormData {
     name = "Adding new subscriber",
     skip(form, connection_pool),
     fields(
-        request_id = %Uuid::new_v4(),
-        subsceriber_name = %form.name,
-        subsceriber_email = %form.email))]
+        subscriber_name = %form.name,
+        subscriber_email = %form.email))]
 pub async fn subscribe(form: Form<FormData>, connection_pool: web::Data<PgPool>) -> HttpResponse {
     match insert_subscriber(&form, &connection_pool).await {
         Ok(_) => HttpResponse::Ok().finish(),
