@@ -16,6 +16,7 @@ jobs:
     name: Test
     runs-on: ubuntu-latest
     steps:
+      - uses: rui314/setup-mold@v1
       - uses: actions/checkout@v3
       - uses: dtolnay/rust-toolchain@stable
       - name: Run tests
@@ -25,6 +26,7 @@ jobs:
     name: Rustfmt
     runs-on: ubuntu-latest
     steps:
+      - uses: rui314/setup-mold@v1
       - uses: actions/checkout@v3
       - uses: dtolnay/rust-toolchain@stable
         with:
@@ -36,6 +38,7 @@ jobs:
     name: Clippy linting
     runs-on: ubuntu-latest
     steps:
+      - uses: rui314/setup-mold@v1
       - uses: actions/checkout@v3
       - uses: dtolnay/rust-toolchain@stable
         with:
@@ -48,6 +51,7 @@ jobs:
 #    name: Code coverage
 #    runs-on: ubuntu-latest
 #    steps:
+#      - uses: rui314/setup-mold@v1
 #      - uses: actions/checkout@v3
 #      - uses: dtolnay/rust-toolchain@stable
 #      - name: Install tarpaulin
