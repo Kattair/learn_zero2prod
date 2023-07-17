@@ -12,10 +12,25 @@ fi
 
 if ! [ -x "$(command -v sqlx)" ]; then
   echo >&2 "Error: sqlx is not installed."
-  echo >&2 "Use:"
+  echo >&2 "Use: "
   echo >&2 "    cargo install --version='~0.6' sqlx-cli --no-default-features --features rustls,postgres"
   echo >&2 "to install it."
   exit 1
+fi
+
+if ! [ -x "$(command -v docker)" ] && ! [ -x "$(command -v podman)" ]; then
+  echo >&2 "Error: neither docker nor podman installed - install one of them and try again"
+  exit 1
+fi
+
+if [ -x "$(command -v docker)" ]; then
+  echo >&2 "Docker will be used to run Postgres container."
+  CONTAINER_RUNTIME="docker"
+fi
+  
+if [ -x "$(command -v podman)" ]; then
+  echo >&2 "Podman will be used to run Postgres container."
+  CONTAINER_RUNTIME="podman"
 fi
 
 # Check if a custom user has been set, otherwise default to 'postgres'
@@ -33,14 +48,14 @@ DB_HOST="${POSTGRES_HOST:=localhost}"
 if [[ -z "${SKIP_DOCKER}" ]]
 then
   # if a postgres container is running, print instructions to kill it and exit
-  RUNNING_POSTGRES_CONTAINER=$(docker ps --filter 'name=postgres' --format '{{.ID}}')
+  RUNNING_POSTGRES_CONTAINER=$($CONTAINER_RUNTIME ps --filter 'name=postgres' --format '{{.ID}}')
   if [[ -n $RUNNING_POSTGRES_CONTAINER ]]; then
     echo >&2 "there is a postgres container already running, kill it with"
     echo >&2 "    docker kill ${RUNNING_POSTGRES_CONTAINER}"
     exit 1
   fi
   # Launch postgres using Docker
-  docker run \
+  $CONTAINER_RUNTIME run \
       -e POSTGRES_USER=${DB_USER} \
       -e POSTGRES_PASSWORD=${DB_PASSWORD} \
       -e POSTGRES_DB=${DB_NAME} \
