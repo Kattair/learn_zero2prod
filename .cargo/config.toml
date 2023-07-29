@@ -7,7 +7,7 @@
 # LINUX MOLD
 # Ubuntu: `sudo apt install mold clang`
 [target.x86_64-unknown-linux-gnu]
-linker = "clang"
+#linker = "clang" # not needed with recent enough GCC
 rustflags = ["-C", "link-arg=-fuse-ld=mold"]
 
 # WINDOWS
