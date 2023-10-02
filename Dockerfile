@@ -1,4 +1,4 @@
-FROM rust:1.71.1-bookworm
+FROM rust:1.72.1-bookworm
 
 WORKDIR /app
 
@@ -8,4 +8,5 @@ COPY . .
 ENV SQLX_OFFLINE=true
 RUN cargo build --release
 
+ENV APP_ENVIRONMENT=production
 ENTRYPOINT [ "target/release/zero2prod" ]
