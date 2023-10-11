@@ -24,6 +24,7 @@ tracing-log = "0.1"
 tracing-subscriber = { version = "0.3", features = ["registry", "env-filter"] }
 unicode-segmentation = "1"
 uuid = { version = "1", features = ["v4", "macro-diagnostics"] }
+validator = "0.16"
 
 [dependencies.sqlx]
 version = "0.7"

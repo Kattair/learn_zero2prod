@@ -1,10 +1,5 @@
 use unicode_segmentation::UnicodeSegmentation;
 
-pub struct NewSubscriber {
-    pub email: String,
-    pub name: SubscriberName,
-}
-
 const FORBIDDEN_NAME_CHARACTERS: [char; 9] = ['/', '(', ')', '"', '<', '>', '\\', '{', '}'];
 
 #[derive(Debug)]
@@ -39,31 +34,31 @@ mod tests {
     use super::FORBIDDEN_NAME_CHARACTERS;
 
     #[test]
-    pub fn long_name_is_accepted() {
+    fn long_name_is_accepted() {
         let name = "a".repeat(256);
         assert_ok!(SubscriberName::parse(name));
     }
 
     #[test]
-    pub fn too_long_name_is_rejected() {
+    fn too_long_name_is_rejected() {
         let name = "a".repeat(257);
         assert_err!(SubscriberName::parse(name));
     }
 
     #[test]
-    pub fn blank_name_is_rejected() {
+    fn blank_name_is_rejected() {
         let name = " ".to_owned();
         assert_err!(SubscriberName::parse(name));
     }
 
     #[test]
-    pub fn empty_name_is_rejected() {
+    fn empty_name_is_rejected() {
         let name = "".to_owned();
         assert_err!(SubscriberName::parse(name));
     }
 
     #[test]
-    pub fn name_containing_forbidden_character_is_rejected() {
+    fn name_containing_forbidden_character_is_rejected() {
         for ch in &FORBIDDEN_NAME_CHARACTERS {
             let name = ch.to_string();
             assert_err!(SubscriberName::parse(name));
@@ -71,7 +66,7 @@ mod tests {
     }
 
     #[test]
-    pub fn a_valid_name_is_ok() {
+    fn a_valid_name_is_ok() {
         let name = "John Doe".to_owned();
         assert_ok!(SubscriberName::parse(name));
     }
