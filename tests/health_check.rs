@@ -116,6 +116,36 @@ async fn subscribe_returns_200_when_valid_form_data() {
 }
 
 #[tokio::test]
+async fn subscribe_returns_404_when_fields_are_present_but_empty() {
+    let app = spawn_app().await;
+    let client = reqwest::Client::new();
+    // TODO: look at 'rstest' crate
+    let test_cases = vec![
+        ("name=&email=ursula_le_guin%40gmail.com", "empty name"),
+        ("name=le%20guin&email=", "empty email"),
+        ("name=&email=", "empty name and email"),
+    ];
+
+    for (payload, description) in test_cases {
+        let response = client
+            .post(format!("http://{}/subscriptions", &app.app_address))
+            .header(header::CONTENT_TYPE, "application/x-www-form-urlencoded")
+            .body(payload)
+            .send()
+            .await
+            .expect("Failed to execute request.");
+
+        assert_eq!(
+            StatusCode::BAD_REQUEST,
+            response.status(),
+            "The API did not return a {} when the payload was {}",
+            StatusCode::BAD_REQUEST,
+            description
+        )
+    }
+}
+
+#[tokio::test]
 async fn subscribe_returns_400_when_data_is_missing() {
     let app = spawn_app().await;
     let client = reqwest::Client::new();
@@ -138,7 +168,8 @@ async fn subscribe_returns_400_when_data_is_missing() {
         assert_eq!(
             StatusCode::BAD_REQUEST,
             response.status(),
-            "The API did not fail with 400 BAD REQUEST when the payload was {}.",
+            "The API did not fail with {} when the payload was {}.",
+            StatusCode::BAD_REQUEST,
             error_message
         );
     }
