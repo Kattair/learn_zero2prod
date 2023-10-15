@@ -15,10 +15,30 @@ jobs:
   test:
     name: Test
     runs-on: ubuntu-latest
+    services:
+      database:
+        image: postgres
+        env:
+          # must be the same as in .env file
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: password
+          POSTGRES_DB: newsletter
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 3s
+          --health-timeout 5s
+          --health-retries 5
     steps:
       - uses: rui314/setup-mold@v1
       - uses: actions/checkout@v3
       - uses: dtolnay/rust-toolchain@stable
+      - name: Migrate database
+        run: |
+          cargo install sqlx-cli
+          sqlx database create
+          sqlx migrate run
       - name: Run tests
         run: cargo test
 
@@ -37,12 +57,32 @@ jobs:
   linting:
     name: Clippy linting
     runs-on: ubuntu-latest
+    services:
+      database:
+        image: postgres
+        env:
+          # must be the same as in .env file
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: password
+          POSTGRES_DB: newsletter
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 3s
+          --health-timeout 5s
+          --health-retries 5
     steps:
       - uses: rui314/setup-mold@v1
       - uses: actions/checkout@v3
       - uses: dtolnay/rust-toolchain@stable
         with:
           components: clippy
+      - name: Migrate database
+        run: |
+          cargo install sqlx-cli
+          sqlx database create
+          sqlx migrate run
       - name: Run linter
         run: cargo clippy -- -D warnings
 
