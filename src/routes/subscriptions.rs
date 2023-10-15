@@ -14,6 +14,17 @@ pub struct FormData {
     name: String,
 }
 
+impl TryFrom<FormData> for NewSubscriber {
+    type Error = String;
+
+    fn try_from(form: FormData) -> Result<Self, Self::Error> {
+        let name = SubscriberName::parse(form.name)?;
+        let email = SubscriberEmail::parse(form.email)?;
+
+        Ok(NewSubscriber { email, name})
+    }
+}
+
 #[tracing::instrument(
     name = "Adding new subscriber",
     skip(form, connection_pool),
@@ -21,15 +32,10 @@ pub struct FormData {
         subscriber_name = %form.name,
         subscriber_email = %form.email))]
 pub async fn subscribe(form: Form<FormData>, connection_pool: web::Data<PgPool>) -> HttpResponse {
-    let name = match SubscriberName::parse(form.0.name) {
-        Ok(name) => name,
-        Err(why) => return HttpResponse::BadRequest().body(why),
+    let new_subscriber = match form.0.try_into() {
+        Ok(subscriber) => subscriber,
+        Err(why) => return HttpResponse::BadRequest().body(why)
     };
-    let email = match SubscriberEmail::parse(form.0.email) {
-        Ok(email) => email,
-        Err(why) => return HttpResponse::BadRequest().body(why),
-    };
-    let new_subscriber = NewSubscriber { email, name };
     match insert_subscriber(&new_subscriber, &connection_pool).await {
         Ok(_) => HttpResponse::Ok().finish(),
         Err(_) => HttpResponse::InternalServerError().finish(),
