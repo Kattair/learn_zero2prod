@@ -35,7 +35,10 @@ jobs:
       - uses: actions/checkout@v3
       - uses: dtolnay/rust-toolchain@stable
       - name: Migrate database
-        run: ./scripts/init_db.sh
+        run: |
+          cargo install sqlx-cli
+          sqlx database create
+          sqlx migrate run
       - name: Run tests
         run: cargo test
 
