@@ -21,7 +21,7 @@ impl TryFrom<FormData> for NewSubscriber {
         let name = SubscriberName::parse(form.name)?;
         let email = SubscriberEmail::parse(form.email)?;
 
-        Ok(NewSubscriber { email, name})
+        Ok(NewSubscriber { email, name })
     }
 }
 
@@ -34,7 +34,7 @@ impl TryFrom<FormData> for NewSubscriber {
 pub async fn subscribe(form: Form<FormData>, connection_pool: web::Data<PgPool>) -> HttpResponse {
     let new_subscriber = match form.0.try_into() {
         Ok(subscriber) => subscriber,
-        Err(why) => return HttpResponse::BadRequest().body(why)
+        Err(why) => return HttpResponse::BadRequest().body(why),
     };
     match insert_subscriber(&new_subscriber, &connection_pool).await {
         Ok(_) => HttpResponse::Ok().finish(),
