@@ -6,10 +6,13 @@ use sqlx::{
     ConnectOptions,
 };
 
+use crate::domain::SubscriberEmail;
+
 #[derive(serde::Deserialize)]
 pub struct Settings {
     pub database: DatabaseSettings,
     pub application: ApplicationSettings,
+    pub email_client: EmailClientSettings,
 }
 
 #[derive(serde::Deserialize)]
@@ -26,6 +29,14 @@ pub struct DatabaseSettings {
 pub struct ApplicationSettings {
     pub host: Ipv4Addr,
     pub port: u16,
+}
+
+#[derive(serde::Deserialize)]
+pub struct EmailClientSettings {
+    pub base_url: String,
+    pub sender_email: String,
+    pub api_token: Secret<String>,
+    pub api_secret: Secret<String>,
 }
 
 impl DatabaseSettings {
@@ -47,6 +58,12 @@ impl DatabaseSettings {
             .username(&self.username)
             .password(self.password.expose_secret())
             .ssl_mode(ssl_mode)
+    }
+}
+
+impl EmailClientSettings {
+    pub fn sender(&self) -> Result<SubscriberEmail, String> {
+        SubscriberEmail::parse(self.sender_email.to_owned())
     }
 }
 

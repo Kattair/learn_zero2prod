@@ -1,5 +1,6 @@
 use sqlx::postgres::PgPoolOptions;
 use std::net::TcpListener;
+use zero2prod::email_client::EmailClient;
 
 use tracing::level_filters::LevelFilter;
 use zero2prod::telemetry::{get_subscriber, init_subscriber};
@@ -19,8 +20,18 @@ async fn main() -> std::io::Result<()> {
         configuration.application.host, configuration.application.port
     );
 
+    let email_client = EmailClient::new(
+        configuration.email_client.base_url.to_owned(),
+        configuration.email_client.api_token.to_owned(),
+        configuration.email_client.api_secret.to_owned(),
+        configuration
+            .email_client
+            .sender()
+            .expect("Invalid sender email address provided."),
+    );
+
     tracing::info!("Available on address {}", &address);
     let tcp_listener = TcpListener::bind(address)?;
 
-    run(tcp_listener, connection_pool)?.await
+    run(tcp_listener, connection_pool, email_client)?.await
 }
