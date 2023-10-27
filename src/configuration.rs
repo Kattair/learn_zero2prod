@@ -35,8 +35,13 @@ pub struct ApplicationSettings {
 pub struct EmailClientSettings {
     pub base_url: String,
     pub sender_email: String,
-    pub api_token: Secret<String>,
-    pub api_secret: Secret<String>,
+    pub credentials: Option<RestApiTokenCredentials>,
+}
+
+#[derive(serde::Deserialize)]
+pub struct RestApiTokenCredentials {
+    pub token: Secret<String>,
+    pub secret: Secret<String>,
 }
 
 impl DatabaseSettings {
