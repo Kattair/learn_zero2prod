@@ -1,27 +1,22 @@
-use secrecy::Secret;
-
-use crate::domain::SubscriberEmail;
+use crate::{configuration::RestApiTokenCredentials, domain::SubscriberEmail};
 
 pub struct EmailClient {
     http_client: reqwest::Client,
     base_url: String,
-    api_token: Secret<String>,
-    api_secret: Secret<String>,
+    credentials: Option<RestApiTokenCredentials>,
     sender: SubscriberEmail,
 }
 
 impl EmailClient {
     pub fn new(
         base_url: String,
-        api_token: Secret<String>,
-        api_secret: Secret<String>,
+        credentials: Option<RestApiTokenCredentials>,
         sender: SubscriberEmail,
     ) -> EmailClient {
         Self {
             http_client: reqwest::Client::new(),
             base_url,
-            api_token,
-            api_secret,
+            credentials,
             sender,
         }
     }

@@ -20,15 +20,11 @@ async fn main() -> std::io::Result<()> {
         configuration.application.host, configuration.application.port
     );
 
-    let email_client = EmailClient::new(
-        configuration.email_client.base_url.to_owned(),
-        configuration.email_client.api_token.to_owned(),
-        configuration.email_client.api_secret.to_owned(),
-        configuration
-            .email_client
-            .sender()
-            .expect("Invalid sender email address provided."),
-    );
+    let email_config = configuration.email_client;
+    let sender = email_config
+        .sender()
+        .expect("The provided sender email is not valid.");
+    let email_client = EmailClient::new(email_config.base_url, email_config.credentials, sender);
 
     tracing::info!("Available on address {}", &address);
     let tcp_listener = TcpListener::bind(address)?;

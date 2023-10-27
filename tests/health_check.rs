@@ -45,15 +45,11 @@ async fn spawn_app() -> TestApp {
     configuration.database.database_name = Uuid::new_v4().to_string();
     let connection_pool = configure_db(&configuration.database).await;
 
-    let email_client = EmailClient::new(
-        configuration.email_client.base_url.to_owned(),
-        configuration.email_client.api_token.to_owned(),
-        configuration.email_client.api_secret.to_owned(),
-        configuration
-            .email_client
-            .sender()
-            .expect("Invalid sender email address provided."),
-    );
+    let email_config = configuration.email_client;
+    let sender = email_config
+        .sender()
+        .expect("The provided sender email is not valid.");
+    let email_client = EmailClient::new(email_config.base_url, email_config.credentials, sender);
 
     let server = zero2prod::startup::run(tcp_listener, connection_pool.clone(), email_client)
         .expect("Failed to bind address.");
