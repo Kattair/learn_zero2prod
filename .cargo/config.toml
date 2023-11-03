@@ -12,7 +12,7 @@ rustflags = ["-C", "link-arg=-fuse-ld=mold"]
 
 # WINDOWS
 # `cargo install -f cargo-binutils`
-# `rustup component add llvm-tools-preview`
+# `rustup component add llvm-tools-x86_64-pc-windows-msvc`
 [target.x86_64-pc-windows-msvc]
 rustflags = ["-C", "link-arg=-fuse-ld=lld"]
 
