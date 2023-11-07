@@ -14,10 +14,10 @@ rustflags = ["-C", "link-arg=-fuse-ld=mold"]
 # `cargo install -f cargo-binutils`
 # `rustup component add llvm-tools-x86_64-pc-windows-msvc`
 [target.x86_64-pc-windows-msvc]
-rustflags = ["-C", "link-arg=-fuse-ld=lld"]
+linker = "rust-lld"
 
 [target.x86_64-pc-windows-gnu]
-rustflags = ["-C", "link-arg=-fuse-ld=lld"]
+linker = "rust-lld"
 
 # MACOS
 # 'brew install michaeleisel/zld/zld`
