@@ -18,21 +18,6 @@ if ! [ -x "$(command -v sqlx)" ]; then
   exit 1
 fi
 
-if ! [ -x "$(command -v docker)" ] && ! [ -x "$(command -v podman)" ]; then
-  echo >&2 "Error: neither docker nor podman installed - install one of them and try again"
-  exit 1
-fi
-
-if [ -x "$(command -v docker)" ]; then
-  echo >&2 "Docker will be used to run Postgres container."
-  CONTAINER_RUNTIME="docker"
-fi
-  
-if [ -x "$(command -v podman)" ]; then
-  echo >&2 "Podman will be used to run Postgres container."
-  CONTAINER_RUNTIME="podman"
-fi
-
 # Check if a custom user has been set, otherwise default to 'postgres'
 DB_USER="${POSTGRES_USER:=postgres}"
 # Check if a custom password has been set, otherwise default to 'password'
@@ -47,11 +32,25 @@ DB_HOST="${POSTGRES_HOST:=localhost}"
 # Allow to skip Docker if a dockerized Postgres database is already running
 if [[ -z "${SKIP_DOCKER}" ]]
 then
+  if ! [ -x "$(command -v docker)" ] && ! [ -x "$(command -v podman)" ]; then
+    echo >&2 "Error: neither docker nor podman installed - install one of them and try again"
+    exit 1
+  fi
+
+  if [ -x "$(command -v docker)" ]; then
+    echo >&2 "Docker will be used to run Postgres container."
+    CONTAINER_RUNTIME="docker"
+  fi
+    
+  if [ -x "$(command -v podman)" ]; then
+    echo >&2 "Podman will be used to run Postgres container."
+    CONTAINER_RUNTIME="podman"
+  fi
   # if a postgres container is running, print instructions to kill it and exit
   RUNNING_POSTGRES_CONTAINER=$($CONTAINER_RUNTIME ps --filter 'name=postgres' --format '{{.ID}}')
   if [[ -n $RUNNING_POSTGRES_CONTAINER ]]; then
     echo >&2 "there is a postgres container already running, kill it with"
-    echo >&2 "    docker kill ${RUNNING_POSTGRES_CONTAINER}"
+    echo >&2 "    ${CONTAINER_RUNTIME} kill ${RUNNING_POSTGRES_CONTAINER}"
     exit 1
   fi
   # Launch postgres using Docker
