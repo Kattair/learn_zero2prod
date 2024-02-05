@@ -24,7 +24,7 @@ async fn main() -> std::io::Result<()> {
     let sender = email_config
         .sender()
         .expect("The provided sender email is not valid.");
-    let email_client = EmailClient::new(email_config.base_url, email_config.credentials, sender);
+    let email_client = EmailClient::new(email_config.base_url, email_config.secret, sender);
 
     tracing::info!("Available on address {}", &address);
     let tcp_listener = TcpListener::bind(address)?;

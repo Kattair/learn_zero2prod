@@ -1,24 +1,34 @@
-use secrecy::ExposeSecret;
+use reqwest::header::{HeaderMap, HeaderValue, AUTHORIZATION};
+use secrecy::{ExposeSecret, Secret};
 
-use crate::{configuration::RestApiTokenCredentials, domain::SubscriberEmail};
+use crate::domain::SubscriberEmail;
 
 pub struct EmailClient {
     http_client: reqwest::Client,
     base_url: reqwest::Url,
-    credentials: Option<RestApiTokenCredentials>,
     sender: SubscriberEmail,
 }
 
 impl EmailClient {
     pub fn new(
         base_url: String,
-        credentials: Option<RestApiTokenCredentials>,
+        credentials: Option<Secret<String>>,
         sender: SubscriberEmail,
     ) -> EmailClient {
+        let mut headers = HeaderMap::new();
+        if let Some(secret) = credentials {
+                let mut auth_header = HeaderValue::from_str(&format!("Bearer {}", secret.expose_secret()))
+                    .unwrap();
+                auth_header.set_sensitive(true);
+                headers.insert(AUTHORIZATION, auth_header);
+        }
+        let http_client = reqwest::Client::builder()
+            .default_headers(headers)
+            .build()
+            .unwrap();
         Self {
-            http_client: reqwest::Client::new(),
+            http_client,
             base_url: reqwest::Url::parse(&base_url).unwrap(),
-            credentials,
             sender,
         }
     }
@@ -35,28 +45,26 @@ impl EmailClient {
             from: Recipient { email: self.sender.as_ref().to_owned(), name: None },
             to: Recipient { email: recipient.as_ref().to_owned(), name: None },
             subject: subject.to_owned(),
-            html_part: html_body.to_owned(),
-            text_part: text_body.to_owned(),
+            html: html_body.to_owned(),
+            text: text_body.to_owned(),
         };
-        let builder = self.http_client.post(url)
-            .json(&message);
-        // if let Some(credentials) = &self.credentials {
-        //     builder = builder.basic_auth(
-        //         credentials.token.expose_secret(),
-        //         Some(credentials.secret.expose_secret()),
-        //     );
-        // }
+        self.http_client.post(url)
+            .json(&message)
+            .send()
+            .await
+            .map_err(|e| e.to_string())?;
 
         Ok(())
     }
 }
+
 #[derive(serde::Serialize)]
 struct Message {
     from: Recipient,
     to: Recipient,
     subject: String,
-    text_part: String,
-    html_part: String,
+    text: String,
+    html: String,
 }
 
 #[derive(serde::Serialize)]
