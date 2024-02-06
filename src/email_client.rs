@@ -39,8 +39,8 @@ impl EmailClient {
         subject: &str,
         html_body: &str,
         text_body: &str,
-    ) -> Result<(), String> {
-        let url = self.base_url.join("send").map_err(|e| e.to_string())?;
+    ) -> Result<(), reqwest::Error> {
+        let url = format!("{}/send", self.base_url);
         let message = Message {
             from: Recipient { email: self.sender.as_ref().to_owned(), name: None },
             to: Recipient { email: recipient.as_ref().to_owned(), name: None },
@@ -51,9 +51,7 @@ impl EmailClient {
         self.http_client.post(url)
             .json(&message)
             .send()
-            .await
-            .map_err(|e| e.to_string())?;
-
+            .await?;
         Ok(())
     }
 }

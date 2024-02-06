@@ -6,7 +6,3 @@ database:
   port: 5432
   host: localhost
   database_name: newsletter
-email_client:
-  base_url: localhost
-  sender_email: test@email.com
-  secret: secret
