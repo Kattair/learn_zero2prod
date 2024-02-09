@@ -1,3 +1,5 @@
+use std::time::Duration;
+
 use reqwest::header::{HeaderMap, HeaderValue, AUTHORIZATION};
 use secrecy::{ExposeSecret, Secret};
 
@@ -24,6 +26,7 @@ impl EmailClient {
         }
         let http_client = reqwest::Client::builder()
             .default_headers(headers)
+            .timeout(Duration::from_secs(10))
             .build()
             .unwrap();
         Self {
@@ -75,6 +78,8 @@ struct Recipient<'a> {
 
 #[cfg(test)]
 mod tests {
+    use std::time::Duration;
+
     use super::EmailClient;
     use crate::domain::SubscriberEmail;
     use claim::{assert_err, assert_ok};
@@ -142,6 +147,30 @@ mod tests {
 
         Mock::given(any())
             .respond_with(ResponseTemplate::new(500))
+            .expect(1)
+            .mount(&mock_server)
+            .await;
+
+        let subscriber_email = SubscriberEmail::parse(SafeEmail().fake()).unwrap();
+        let subject: String = Sentence(1..2).fake();
+        let body: String = Paragraph(1..10).fake();
+
+        let response = email_client
+            .send_email(&subscriber_email, &subject, &body, &body)
+            .await;
+
+        assert_err!(response);
+    }
+
+    #[tokio::test]
+    async fn send_email_fails_if_request_timeouts() {
+        let mock_server = wiremock::MockServer::start().await;
+        let sender = SubscriberEmail::parse(SafeEmail().fake()).unwrap();
+        let secret = Secret::new(Faker.fake());
+        let email_client = EmailClient::new(mock_server.uri(), Some(secret.to_owned()), sender);
+
+        Mock::given(any())
+            .respond_with(ResponseTemplate::new(500).set_delay(Duration::from_secs(180)))
             .expect(1)
             .mount(&mock_server)
             .await;
