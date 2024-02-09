@@ -20,10 +20,10 @@ impl EmailClient {
     ) -> EmailClient {
         let mut headers = HeaderMap::new();
         if let Some(secret) = credentials {
-                let mut auth_header = HeaderValue::from_str(&format!("Bearer {}", secret.expose_secret()))
-                    .unwrap();
-                auth_header.set_sensitive(true);
-                headers.insert(AUTHORIZATION, auth_header);
+            let mut auth_header =
+                HeaderValue::from_str(&format!("Bearer {}", secret.expose_secret())).unwrap();
+            auth_header.set_sensitive(true);
+            headers.insert(AUTHORIZATION, auth_header);
         }
         let http_client = reqwest::Client::builder()
             .default_headers(headers)
@@ -41,17 +41,24 @@ impl EmailClient {
         &self,
         recipient: &SubscriberEmail,
         subject: &str,
-        html_body: &str,
-        text_body: &str,
+        html: &str,
+        text: &str,
     ) -> Result<(), reqwest::Error> {
         let message = Message {
-            from: Recipient { email: self.sender.as_ref(), name: None },
-            to: Recipient { email: recipient.as_ref(), name: None },
-            subject: subject,
-            html: html_body,
-            text: text_body,
+            from: Recipient {
+                email: self.sender.as_ref(),
+                name: None,
+            },
+            to: Recipient {
+                email: recipient.as_ref(),
+                name: None,
+            },
+            subject,
+            html,
+            text,
         };
-        self.http_client.post(self.api_url.as_ref())
+        self.http_client
+            .post(self.api_url.as_ref())
             .json(&message)
             .send()
             .await?
@@ -86,13 +93,18 @@ mod tests {
     use claim::{assert_err, assert_ok};
     use fake::{
         faker::{
-            internet::en::SafeEmail, lorem::en::{Paragraph, Sentence}
+            internet::en::SafeEmail,
+            lorem::en::{Paragraph, Sentence},
         },
         Fake, Faker,
     };
     use secrecy::{ExposeSecret, Secret};
     use serde_json::Value;
-    use wiremock::{http::Method, matchers::{any, bearer_token, header, method, path}, Mock, ResponseTemplate};
+    use wiremock::{
+        http::Method,
+        matchers::{any, bearer_token, header, method, path},
+        Mock, ResponseTemplate,
+    };
 
     struct SendEmailBodymatcher {}
 
@@ -115,7 +127,15 @@ mod tests {
         let sender = SubscriberEmail::parse(SafeEmail().fake()).unwrap();
         let secret = Secret::new(Faker.fake());
 
-        (EmailClient::new(api_url, Some(secret.to_owned()), sender, Duration::from_millis(200)), secret)
+        (
+            EmailClient::new(
+                api_url,
+                Some(secret.to_owned()),
+                sender,
+                Duration::from_millis(200),
+            ),
+            secret,
+        )
     }
 
     fn email() -> SubscriberEmail {
@@ -139,7 +159,7 @@ mod tests {
             .and(path("/"))
             .and(bearer_token(secret.expose_secret()))
             .and(header("Content-Type", "application/json"))
-            .and(SendEmailBodymatcher{})
+            .and(SendEmailBodymatcher {})
             .respond_with(ResponseTemplate::new(200))
             .expect(1)
             .mount(&mock_server)
