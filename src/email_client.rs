@@ -5,13 +5,13 @@ use crate::domain::SubscriberEmail;
 
 pub struct EmailClient {
     http_client: reqwest::Client,
-    base_url: reqwest::Url,
+    api_url: reqwest::Url,
     sender: SubscriberEmail,
 }
 
 impl EmailClient {
     pub fn new(
-        base_url: String,
+        api_url: String,
         credentials: Option<Secret<String>>,
         sender: SubscriberEmail,
     ) -> EmailClient {
@@ -28,7 +28,7 @@ impl EmailClient {
             .unwrap();
         Self {
             http_client,
-            base_url: reqwest::Url::parse(&base_url).unwrap(),
+            api_url: reqwest::Url::parse(api_url.as_ref()).unwrap(),
             sender,
         }
     }
@@ -40,15 +40,14 @@ impl EmailClient {
         html_body: &str,
         text_body: &str,
     ) -> Result<(), reqwest::Error> {
-        let url = self.base_url.join("send").unwrap();
         let message = Message {
-            from: Recipient { email: self.sender.as_ref().to_owned(), name: None },
-            to: Recipient { email: recipient.as_ref().to_owned(), name: None },
-            subject: subject.to_owned(),
-            html: html_body.to_owned(),
-            text: text_body.to_owned(),
+            from: Recipient { email: self.sender.as_ref(), name: None },
+            to: Recipient { email: recipient.as_ref(), name: None },
+            subject: subject,
+            html: html_body,
+            text: text_body,
         };
-        self.http_client.post(url)
+        self.http_client.post(self.api_url.as_ref())
             .json(&message)
             .send()
             .await?;
@@ -57,18 +56,20 @@ impl EmailClient {
 }
 
 #[derive(serde::Serialize)]
-struct Message {
-    from: Recipient,
-    to: Recipient,
-    subject: String,
-    text: String,
-    html: String,
+#[serde(rename_all = "snake_case")]
+struct Message<'a> {
+    from: Recipient<'a>,
+    to: Recipient<'a>,
+    subject: &'a str,
+    text: &'a str,
+    html: &'a str,
 }
 
 #[derive(serde::Serialize)]
-struct Recipient {
-    email: String,
-    name: Option<String>,
+#[serde(rename_all = "snake_case")]
+struct Recipient<'a> {
+    email: &'a str,
+    name: Option<&'a str>,
 }
 
 #[cfg(test)]

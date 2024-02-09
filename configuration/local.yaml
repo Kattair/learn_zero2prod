@@ -3,6 +3,6 @@ application:
 database:
   require_ssl: false
 email_client:
-  base_url: localhost
+  api_url: localhost
   sender_email: test@email.com
   secret: secret

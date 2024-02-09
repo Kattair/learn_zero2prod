@@ -33,7 +33,7 @@ pub struct ApplicationSettings {
 
 #[derive(serde::Deserialize)]
 pub struct EmailClientSettings {
-    pub base_url: String,
+    pub api_url: String,
     pub sender_email: String,
     pub secret: Option<Secret<String>>,
 }
