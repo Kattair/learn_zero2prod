@@ -50,7 +50,8 @@ impl EmailClient {
         self.http_client.post(self.api_url.as_ref())
             .json(&message)
             .send()
-            .await?;
+            .await?
+            .error_for_status()?;
         Ok(())
     }
 }
@@ -76,6 +77,7 @@ struct Recipient<'a> {
 mod tests {
     use super::EmailClient;
     use crate::domain::SubscriberEmail;
+    use claim::{assert_err, assert_ok};
     use fake::{
         faker::{
             internet::en::SafeEmail, lorem::en::{Paragraph, Sentence}
@@ -84,7 +86,7 @@ mod tests {
     };
     use secrecy::{ExposeSecret, Secret};
     use serde_json::Value;
-    use wiremock::{http::Method, matchers::{bearer_token, header, method, path}, Mock, ResponseTemplate};
+    use wiremock::{http::Method, matchers::{any, bearer_token, header, method, path}, Mock, ResponseTemplate};
 
     struct SendEmailBodymatcher {}
 
@@ -92,7 +94,6 @@ mod tests {
         fn matches(&self, request: &wiremock::Request) -> bool {
             let result = request.body_json::<Value>();
             if let Ok(body) = result {
-                dbg!(&body);
                 body.get("from").is_some()
                     && body.get("to").is_some()
                     && body.get("subject").is_some()
@@ -112,7 +113,7 @@ mod tests {
         let email_client = EmailClient::new(mock_server.uri(), Some(secret.to_owned()), sender);
 
         Mock::given(method(Method::Post))
-            .and(path("/send"))
+            .and(path("/"))
             .and(bearer_token(secret.expose_secret()))
             .and(header("Content-Type", "application/json"))
             .and(SendEmailBodymatcher{})
@@ -125,8 +126,34 @@ mod tests {
         let subject: String = Sentence(1..2).fake();
         let body: String = Paragraph(1..10).fake();
 
-        let _ = email_client
+        let response = email_client
             .send_email(&subscriber_email, &subject, &body, &body)
             .await;
+
+        assert_ok!(response);
+    }
+
+    #[tokio::test]
+    async fn send_email_fails_if_server_returns_500() {
+        let mock_server = wiremock::MockServer::start().await;
+        let sender = SubscriberEmail::parse(SafeEmail().fake()).unwrap();
+        let secret = Secret::new(Faker.fake());
+        let email_client = EmailClient::new(mock_server.uri(), Some(secret.to_owned()), sender);
+
+        Mock::given(any())
+            .respond_with(ResponseTemplate::new(500))
+            .expect(1)
+            .mount(&mock_server)
+            .await;
+
+        let subscriber_email = SubscriberEmail::parse(SafeEmail().fake()).unwrap();
+        let subject: String = Sentence(1..2).fake();
+        let body: String = Paragraph(1..10).fake();
+
+        let response = email_client
+            .send_email(&subscriber_email, &subject, &body, &body)
+            .await;
+
+        assert_err!(response);
     }
 }
