@@ -40,7 +40,7 @@ impl EmailClient {
         html_body: &str,
         text_body: &str,
     ) -> Result<(), reqwest::Error> {
-        let url = format!("{}/send", self.base_url);
+        let url = self.base_url.join("send").unwrap();
         let message = Message {
             from: Recipient { email: self.sender.as_ref().to_owned(), name: None },
             to: Recipient { email: recipient.as_ref().to_owned(), name: None },
@@ -77,20 +77,44 @@ mod tests {
     use crate::domain::SubscriberEmail;
     use fake::{
         faker::{
-            internet::en::SafeEmail,
-            lorem::en::{Paragraph, Sentence},
+            internet::en::SafeEmail, lorem::en::{Paragraph, Sentence}
         },
-        Fake,
+        Fake, Faker,
     };
-    use wiremock::{matchers::any, Mock, ResponseTemplate};
+    use secrecy::{ExposeSecret, Secret};
+    use serde_json::Value;
+    use wiremock::{http::Method, matchers::{bearer_token, header, method, path}, Mock, ResponseTemplate};
+
+    struct SendEmailBodymatcher {}
+
+    impl wiremock::Match for SendEmailBodymatcher {
+        fn matches(&self, request: &wiremock::Request) -> bool {
+            let result = request.body_json::<Value>();
+            if let Ok(body) = result {
+                dbg!(&body);
+                body.get("from").is_some()
+                    && body.get("to").is_some()
+                    && body.get("subject").is_some()
+                    && body.get("text").is_some()
+                    && body.get("html").is_some()
+            } else {
+                false
+            }
+        }
+    }
 
     #[tokio::test]
-    async fn send_email_fires_a_request_to_base_url() {
+    async fn send_email_sends_the_expected_request() {
         let mock_server = wiremock::MockServer::start().await;
         let sender = SubscriberEmail::parse(SafeEmail().fake()).unwrap();
-        let email_client = EmailClient::new(mock_server.uri(), None, sender);
+        let secret = Secret::new(Faker.fake());
+        let email_client = EmailClient::new(mock_server.uri(), Some(secret.to_owned()), sender);
 
-        Mock::given(any())
+        Mock::given(method(Method::Post))
+            .and(path("/send"))
+            .and(bearer_token(secret.expose_secret()))
+            .and(header("Content-Type", "application/json"))
+            .and(SendEmailBodymatcher{})
             .respond_with(ResponseTemplate::new(200))
             .expect(1)
             .mount(&mock_server)
