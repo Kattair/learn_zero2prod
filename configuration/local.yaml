@@ -3,6 +3,6 @@ application:
 database:
   require_ssl: false
 email_client:
-  api_url: localhost
+  api_url: https://sandbox.api.mailtrap.io/api/send/{inbox_id}
   sender_email: test@email.com
   secret: secret
