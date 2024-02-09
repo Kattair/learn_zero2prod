@@ -1,4 +1,4 @@
-use std::net::Ipv4Addr;
+use std::{net::Ipv4Addr, time::Duration};
 
 use secrecy::{ExposeSecret, Secret};
 use sqlx::{
@@ -36,6 +36,7 @@ pub struct EmailClientSettings {
     pub api_url: String,
     pub sender_email: String,
     pub secret: Option<Secret<String>>,
+    pub timeout_millis: u64,
 }
 
 impl DatabaseSettings {
@@ -63,6 +64,10 @@ impl DatabaseSettings {
 impl EmailClientSettings {
     pub fn sender(&self) -> Result<SubscriberEmail, String> {
         SubscriberEmail::parse(self.sender_email.to_owned())
+    }
+
+    pub fn timeout(&self) -> Duration {
+        Duration::from_millis(self.timeout_millis)
     }
 }
 

@@ -49,7 +49,8 @@ async fn spawn_app() -> TestApp {
     let sender = email_config
         .sender()
         .expect("The provided sender email is not valid.");
-    let email_client = EmailClient::new(email_config.api_url, email_config.secret, sender);
+    let timeout = email_config.timeout();
+    let email_client = EmailClient::new(email_config.api_url, email_config.secret, sender, timeout);
 
     let server = zero2prod::startup::run(tcp_listener, connection_pool.clone(), email_client)
         .expect("Failed to bind address.");

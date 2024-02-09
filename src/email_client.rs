@@ -16,6 +16,7 @@ impl EmailClient {
         api_url: String,
         credentials: Option<Secret<String>>,
         sender: SubscriberEmail,
+        timeout: Duration,
     ) -> EmailClient {
         let mut headers = HeaderMap::new();
         if let Some(secret) = credentials {
@@ -26,7 +27,7 @@ impl EmailClient {
         }
         let http_client = reqwest::Client::builder()
             .default_headers(headers)
-            .timeout(Duration::from_secs(10))
+            .timeout(timeout)
             .build()
             .unwrap();
         Self {
@@ -114,7 +115,7 @@ mod tests {
         let sender = SubscriberEmail::parse(SafeEmail().fake()).unwrap();
         let secret = Secret::new(Faker.fake());
 
-        (EmailClient::new(api_url, Some(secret.to_owned()), sender), secret)
+        (EmailClient::new(api_url, Some(secret.to_owned()), sender, Duration::from_millis(200)), secret)
     }
 
     fn email() -> SubscriberEmail {
