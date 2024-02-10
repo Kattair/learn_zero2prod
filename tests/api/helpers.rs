@@ -1,6 +1,5 @@
 use once_cell::sync::Lazy;
-use std::net::TcpListener;
-use zero2prod::email_client::EmailClient;
+use zero2prod::startup::{get_connection_pool, Application};
 
 use sqlx::{Connection, Executor, PgConnection, PgPool};
 use tracing_subscriber::filter::LevelFilter;
@@ -37,28 +36,22 @@ pub struct TestApp {
 pub async fn spawn_app() -> TestApp {
     Lazy::force(&TRACING);
 
-    let tcp_listener = TcpListener::bind("127.0.0.1:0").expect("Failed to bind random port.");
-    let app_address = tcp_listener.local_addr().unwrap().to_string();
+    let configuration = {
+        let mut c = get_configuration().expect("Failed to read configuration.");
+        c.database.database_name = Uuid::new_v4().to_string();
+        c.application.port = 0;
+        c
+    };
+    
+    configure_db(&configuration.database).await;
 
-    let mut configuration = get_configuration().expect("Failed to read configuration.");
-    configuration.database.database_name = Uuid::new_v4().to_string();
-    let connection_pool = configure_db(&configuration.database).await;
-
-    let email_config = configuration.email_client;
-    let sender = email_config
-        .sender()
-        .expect("The provided sender email is not valid.");
-    let timeout = email_config.timeout();
-    let email_client = EmailClient::new(email_config.api_url, email_config.secret, sender, timeout);
-
-    let server = zero2prod::startup::run(tcp_listener, connection_pool.clone(), email_client)
-        .expect("Failed to bind address.");
-
-    tokio::spawn(server);
+    let app = Application::build(&configuration).expect("Failed to build application.");
+    let port = app.port();
+    let _ = tokio::spawn(app.run_until_stopped());
 
     TestApp {
-        app_address,
-        connection_pool,
+        app_address: format!("{}:{}", configuration.application.host, port),
+        connection_pool: get_connection_pool(&configuration.database),
     }
 }
 
