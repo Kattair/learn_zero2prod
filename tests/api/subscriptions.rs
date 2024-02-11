@@ -1,20 +1,13 @@
-use reqwest::{header, StatusCode};
+use reqwest::StatusCode;
 
 use crate::helpers::spawn_app;
 
 #[tokio::test]
 async fn subscribe_returns_200_when_valid_form_data() {
     let app = spawn_app().await;
-    let client = reqwest::Client::new();
 
     let body = "name=le%20guin&email=ursula_le_guin%40gmail.com";
-    let response = client
-        .post(format!("http://{}/subscriptions", &app.app_address))
-        .header(header::CONTENT_TYPE, "application/x-www-form-urlencoded")
-        .body(body)
-        .send()
-        .await
-        .expect("Failed to execute request.");
+    let response = app.post_subscriptions(body.into()).await;
 
     assert_eq!(StatusCode::OK, response.status());
 
@@ -30,7 +23,6 @@ async fn subscribe_returns_200_when_valid_form_data() {
 #[tokio::test]
 async fn subscribe_returns_404_when_fields_are_present_but_empty() {
     let app = spawn_app().await;
-    let client = reqwest::Client::new();
     // TODO: look at 'rstest' crate
     let test_cases = vec![
         ("name=&email=ursula_le_guin%40gmail.com", "empty name"),
@@ -39,13 +31,7 @@ async fn subscribe_returns_404_when_fields_are_present_but_empty() {
     ];
 
     for (payload, description) in test_cases {
-        let response = client
-            .post(format!("http://{}/subscriptions", &app.app_address))
-            .header(header::CONTENT_TYPE, "application/x-www-form-urlencoded")
-            .body(payload)
-            .send()
-            .await
-            .expect("Failed to execute request.");
+        let response = app.post_subscriptions(payload.into()).await;
 
         assert_eq!(
             StatusCode::BAD_REQUEST,
@@ -60,7 +46,6 @@ async fn subscribe_returns_404_when_fields_are_present_but_empty() {
 #[tokio::test]
 async fn subscribe_returns_400_when_data_is_missing() {
     let app = spawn_app().await;
-    let client = reqwest::Client::new();
     // TODO: look at 'rstest' crate
     let test_cases = vec![
         ("name=le%20guin", "missing the email"),
@@ -69,13 +54,7 @@ async fn subscribe_returns_400_when_data_is_missing() {
     ];
 
     for (invalid_body, error_message) in test_cases {
-        let response = client
-            .post(format!("http://{}/subscriptions", &app.app_address))
-            .header(header::CONTENT_TYPE, "application/x-www-form-urlencoded")
-            .body(invalid_body)
-            .send()
-            .await
-            .expect("Failed to execute request.");
+        let response = app.post_subscriptions(invalid_body.into()).await;
 
         assert_eq!(
             StatusCode::BAD_REQUEST,

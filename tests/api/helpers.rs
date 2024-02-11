@@ -1,4 +1,5 @@
 use once_cell::sync::Lazy;
+use reqwest::{header, Response};
 use zero2prod::startup::{get_connection_pool, Application};
 
 use sqlx::{Connection, Executor, PgConnection, PgPool};
@@ -31,6 +32,18 @@ pub struct TestApp {
     pub connection_pool: PgPool,
 }
 
+impl TestApp {
+    pub async fn post_subscriptions(&self, body: String) -> Response {
+        reqwest::Client::new()
+            .post(format!("http://{}/subscriptions", &self.app_address))
+            .header(header::CONTENT_TYPE, "application/x-www-form-urlencoded")
+            .body(body)
+            .send()
+            .await
+            .expect("Failed to execute request.")
+    }
+}
+
 /// Starts an instance of this app in the background and returns the address it's running at
 /// e.g. "127.0.0.1:8000"
 pub async fn spawn_app() -> TestApp {
@@ -42,7 +55,7 @@ pub async fn spawn_app() -> TestApp {
         c.application.port = 0;
         c
     };
-    
+
     configure_db(&configuration.database).await;
 
     let app = Application::build(&configuration).expect("Failed to build application.");
