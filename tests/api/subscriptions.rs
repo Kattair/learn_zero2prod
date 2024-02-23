@@ -1,6 +1,10 @@
 use reqwest::StatusCode;
 use serde_json::Value;
-use wiremock::{http::Method, matchers::{method, path}, Mock, ResponseTemplate};
+use wiremock::{
+    http::Method,
+    matchers::{method, path},
+    Mock, ResponseTemplate,
+};
 
 use crate::helpers::spawn_app;
 
@@ -87,8 +91,7 @@ async fn subscribe_sends_confirmation_email_for_valid_data() {
         .mount(&app.email_server)
         .await;
 
-    let _ = app.post_subscriptions(body.into())
-        .await;
+    let _ = app.post_subscriptions(body.into()).await;
 }
 
 #[tokio::test]
@@ -104,12 +107,8 @@ async fn subscribe_send_a_confirmation_email_with_a_link() {
 
     let _ = app.post_subscriptions(body.into()).await;
 
-    let email_request = &app.email_server
-        .received_requests()
-        .await
-        .unwrap()[0];
-    let body: Value = serde_json::from_slice(&email_request.body)
-        .unwrap();
+    let email_request = &app.email_server.received_requests().await.unwrap()[0];
+    let body: Value = serde_json::from_slice(&email_request.body).unwrap();
     let get_link = |s: &str| {
         let links: Vec<_> = linkify::LinkFinder::new()
             .kinds(&[linkify::LinkKind::Url])
