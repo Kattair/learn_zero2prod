@@ -9,6 +9,7 @@ use uuid::Uuid;
 use crate::{
     domain::{NewSubscriber, SubscriberEmail, SubscriberName},
     email_client::EmailClient,
+    startup::ApplicationBaseUrl,
 };
 
 #[derive(serde::Deserialize)]
@@ -30,7 +31,7 @@ impl TryFrom<FormData> for NewSubscriber {
 
 #[tracing::instrument(
     name = "Adding new subscriber",
-    skip(form, connection_pool, email_client),
+    skip(form, connection_pool, email_client, base_url),
     fields(
         subscriber_name = %form.name,
         subscriber_email = %form.email))]
@@ -38,6 +39,7 @@ pub async fn subscribe(
     form: Form<FormData>,
     connection_pool: web::Data<PgPool>,
     email_client: web::Data<EmailClient>,
+    base_url: web::Data<ApplicationBaseUrl>,
 ) -> HttpResponse {
     let new_subscriber = match form.0.try_into() {
         Ok(subscriber) => subscriber,
@@ -50,7 +52,7 @@ pub async fn subscribe(
         return HttpResponse::InternalServerError().finish();
     }
 
-    if send_confirmation_email(email_client.as_ref(), &new_subscriber)
+    if send_confirmation_email(email_client.as_ref(), &new_subscriber, &base_url)
         .await
         .is_err()
     {
@@ -61,13 +63,17 @@ pub async fn subscribe(
 
 #[tracing::instrument(
     name = "Sending confirmation email to a new subcriber",
-    skip(email_client, new_subscriber)
+    skip(email_client, new_subscriber, base_url)
 )]
 pub async fn send_confirmation_email(
     email_client: &EmailClient,
     new_subscriber: &NewSubscriber,
+    base_url: &ApplicationBaseUrl,
 ) -> Result<(), reqwest::Error> {
-    let confirmation_link = "https://example.com";
+    let confirmation_link = format!(
+        "{}/subscriptions/confirm?_subscription_token=myToken",
+        base_url.0
+    );
     email_client
         .send_email(
             &new_subscriber.email,

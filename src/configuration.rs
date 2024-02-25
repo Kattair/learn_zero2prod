@@ -29,6 +29,7 @@ pub struct DatabaseSettings {
 pub struct ApplicationSettings {
     pub host: Ipv4Addr,
     pub port: u16,
+    pub base_url: String,
 }
 
 #[derive(serde::Deserialize)]
