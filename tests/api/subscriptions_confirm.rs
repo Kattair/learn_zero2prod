@@ -38,3 +38,31 @@ async fn link_returned_by_subscribe_returns_200_ok_if_called() {
 
     assert_eq!(response.status(), StatusCode::OK);
 }
+
+#[tokio::test]
+async fn link_returned_by_subscribe_confirms_subscription() {
+    let app = helpers::spawn_app().await;
+    let body = "name=le%20guin&email=ursula_le_guin%40gmail.com";
+
+    Mock::given(path(""))
+        .and(method(Method::Post))
+        .respond_with(ResponseTemplate::new(200))
+        .mount(&app.email_server)
+        .await;
+
+    let _ = app.post_subscriptions(body.into()).await;
+
+    let email_request = &app.email_server.received_requests().await.unwrap()[0];
+    let confirmation_links = app.get_confirmation_links(email_request).await;
+
+    let _ = reqwest::get(confirmation_links.html_link).await.unwrap().error_for_status().unwrap();
+
+    let subscription = sqlx::query!("SELECT email, name, status FROM t_subscriptions")
+        .fetch_one(&app.connection_pool)
+        .await
+        .expect("Failed to fetch saved subscription.");
+
+    assert_eq!(subscription.email, "ursula_le_guin@gmail.com");
+    assert_eq!(subscription.name, "le guin");
+    assert_eq!(subscription.status, "confirmed");
+}
