@@ -55,7 +55,11 @@ async fn link_returned_by_subscribe_confirms_subscription() {
     let email_request = &app.email_server.received_requests().await.unwrap()[0];
     let confirmation_links = app.get_confirmation_links(email_request).await;
 
-    let _ = reqwest::get(confirmation_links.html_link).await.unwrap().error_for_status().unwrap();
+    let _ = reqwest::get(confirmation_links.html_link)
+        .await
+        .unwrap()
+        .error_for_status()
+        .unwrap();
 
     let subscription = sqlx::query!("SELECT email, name, status FROM t_subscriptions")
         .fetch_one(&app.connection_pool)
