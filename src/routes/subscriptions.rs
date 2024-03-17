@@ -4,7 +4,7 @@ use actix_web::{
 };
 use chrono::Utc;
 use rand::distributions::DistString;
-use sqlx::PgPool;
+use sqlx::{PgPool, Postgres, Transaction};
 use uuid::Uuid;
 
 use crate::{
@@ -46,16 +46,24 @@ pub async fn subscribe(
         Ok(subscriber) => subscriber,
         Err(why) => return HttpResponse::BadRequest().body(why),
     };
-    let subscriber_id = match insert_subscriber(&new_subscriber, &connection_pool).await {
+    let mut transaction = match connection_pool.begin().await {
+        Ok(transaction) => transaction,
+        Err(_) => return HttpResponse::InternalServerError().finish(),
+    };
+    let subscriber_id = match insert_subscriber(&new_subscriber, &mut transaction).await {
         Ok(subscriber_id) => subscriber_id,
         Err(_) => return HttpResponse::InternalServerError().finish(),
     };
 
     let token = generate_subscription_token();
-    if store_token(&connection_pool, &subscriber_id, &token)
+    if store_token(&mut transaction, &subscriber_id, &token)
         .await
         .is_err()
     {
+        return HttpResponse::InternalServerError().finish();
+    }
+
+    if transaction.commit().await.is_err() {
         return HttpResponse::InternalServerError().finish();
     }
 
@@ -107,11 +115,11 @@ pub async fn send_confirmation_email(
 
 #[tracing::instrument(
     name = "Persisting new subscriber details in database",
-    skip(new_subscriber, connection_pool)
+    skip(new_subscriber, transaction)
 )]
 pub async fn insert_subscriber(
     new_subscriber: &NewSubscriber,
-    connection_pool: &PgPool,
+    transaction: &mut Transaction<'_, Postgres>,
 ) -> Result<Uuid, sqlx::Error> {
     let subscriber_id = Uuid::new_v4();
     sqlx::query!(
@@ -124,7 +132,8 @@ pub async fn insert_subscriber(
         new_subscriber.name.as_ref(),
         Utc::now().naive_utc()
     )
-    .execute(connection_pool)
+    // https://stackoverflow.com/questions/64654769/how-to-build-and-commit-multi-query-transaction-in-sqlx
+    .execute(&mut **transaction)
     .await
     .map_err(|e| {
         // careful with GDPR, this logs email when unique constraint errors
@@ -137,10 +146,10 @@ pub async fn insert_subscriber(
 
 #[tracing::instrument(
     name = "Storing subscription token in database",
-    skip(connection_pool, token)
+    skip(transaction, token)
 )]
 pub async fn store_token(
-    connection_pool: &PgPool,
+    transaction: &mut Transaction<'_, Postgres>,
     subscriber_id: &Uuid,
     token: &str,
 ) -> Result<(), sqlx::Error> {
@@ -152,7 +161,8 @@ pub async fn store_token(
         token,
         subscriber_id
     )
-    .execute(connection_pool)
+    // https://stackoverflow.com/questions/64654769/how-to-build-and-commit-multi-query-transaction-in-sqlx
+    .execute(&mut **transaction)
     .await
     .map_err(|e| {
         tracing::error!("Failed to store subscription token: {:?}", e);
