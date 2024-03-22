@@ -17,6 +17,7 @@ config = "0.14"
 rand = "0.8.5"
 secrecy = { version = "0.8", features = ["serde"] }
 serde = { version = "1", features = ["derive"] }
+thiserror = "1.0.58"
 tokio = { version = "1", features = ["macros", "rt-multi-thread"] }
 tracing = { version = "0.1", features = ["log"] }
 tracing-actix-web = "0.7"
