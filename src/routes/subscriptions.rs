@@ -1,10 +1,10 @@
 use core::fmt;
-use std::f32::consts::E;
 
 use actix_web::{
     web::{self, Form},
     HttpResponse, ResponseError,
 };
+use anyhow::Context;
 use chrono::Utc;
 use rand::distributions::DistString;
 use reqwest::StatusCode;
@@ -47,14 +47,24 @@ pub async fn subscribe(
     base_url: web::Data<ApplicationBaseUrl>,
 ) -> Result<HttpResponse, SubscribeError> {
     let new_subscriber = form.0.try_into().map_err(SubscribeError::ValidationError)?;
-    let mut transaction = connection_pool.begin().await
-        .map_err(SubscribeError::PoolError)?;
-    let subscriber_id = insert_subscriber(&new_subscriber, &mut transaction).await?;
+    let mut transaction = connection_pool
+        .begin()
+        .await
+        .with_context(|| "Failed to acquire a Postgres connection from the pool.")?;
+    let subscriber_id = insert_subscriber(&new_subscriber, &mut transaction)
+        .await
+        .with_context(|| "Failed to store a new subscriber.")?;
     let token = generate_subscription_token();
-    store_token(&mut transaction, &subscriber_id, &token).await?;
-    transaction.commit().await
-        .map_err(SubscribeError::TransactionCommitError)?;
-    send_confirmation_email(email_client.as_ref(), &new_subscriber, &base_url, &token).await?;
+    store_token(&mut transaction, &subscriber_id, &token)
+        .await
+        .with_context(|| "Failed to store the confirmation token for a new subscriber.")?;
+    transaction
+        .commit()
+        .await
+        .with_context(|| "Failed to commit SQL transaction to store a new subscriber.")?;
+    send_confirmation_email(email_client.as_ref(), &new_subscriber, &base_url, &token)
+        .await
+        .with_context(|| "Failed to send a confirmation email.")?;
 
     Ok(HttpResponse::Ok().finish())
 }
@@ -100,23 +110,15 @@ pub async fn send_confirmation_email(
 pub enum SubscribeError {
     #[error("{0}")]
     ValidationError(String),
-    #[error("Failed to acquire a Postgres connection from the pool.")]
-    PoolError(#[source] sqlx::Error),
-    #[error("Failed to commit SQL transaction to store a new subscriber.")]
-    TransactionCommitError(#[source] sqlx::Error),
-    #[error("Failed to store a new subscriber.")]
-    InsertSubscriberError(#[from] InsertSubscriberError),
-    #[error("Failed to store the confirmation token for a new subscriber.")]
-    StoreTokenError(#[from] StoreTokenError),
-    #[error("Failed to send a confirmation email.")]
-    SendEmailError(#[from] reqwest::Error),
+    #[error(transparent)]
+    UnexpectedError(#[from] anyhow::Error),
 }
 
 impl ResponseError for SubscribeError {
     fn status_code(&self) -> reqwest::StatusCode {
         match self {
             SubscribeError::ValidationError(_) => StatusCode::BAD_REQUEST,
-            _ => StatusCode::INTERNAL_SERVER_ERROR,
+            SubscribeError::UnexpectedError(_) => StatusCode::INTERNAL_SERVER_ERROR,
         }
     }
 }
@@ -143,7 +145,10 @@ impl std::error::Error for InsertSubscriberError {
 
 impl fmt::Display for InsertSubscriberError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "A database error was encountered while inserting a new subcriber.")
+        write!(
+            f,
+            "A database error was encountered while inserting a new subcriber."
+        )
     }
 }
 
@@ -169,7 +174,10 @@ impl std::error::Error for StoreTokenError {
 
 impl fmt::Display for StoreTokenError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "A database error was encountered while trying to store a subscription token.")
+        write!(
+            f,
+            "A database error was encountered while trying to store a subscription token."
+        )
     }
 }
 
@@ -179,7 +187,10 @@ impl fmt::Debug for StoreTokenError {
     }
 }
 
-fn error_chain_fmt(err: &impl std::error::Error, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+fn error_chain_fmt(
+    err: &impl std::error::Error,
+    f: &mut std::fmt::Formatter<'_>,
+) -> std::fmt::Result {
     writeln!(f, "{}\n", err)?;
     let mut current = err.source();
     while let Some(source) = current {
