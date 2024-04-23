@@ -14,8 +14,32 @@ use uuid::Uuid;
 use crate::{
     domain::{NewSubscriber, SubscriberEmail, SubscriberName},
     email_client::EmailClient,
+    error,
     startup::ApplicationBaseUrl,
 };
+
+#[derive(thiserror::Error)]
+pub enum SubscribeError {
+    #[error("{0}")]
+    ValidationError(String),
+    #[error(transparent)]
+    UnexpectedError(#[from] anyhow::Error),
+}
+
+impl ResponseError for SubscribeError {
+    fn status_code(&self) -> reqwest::StatusCode {
+        match self {
+            SubscribeError::ValidationError(_) => StatusCode::BAD_REQUEST,
+            SubscribeError::UnexpectedError(_) => StatusCode::INTERNAL_SERVER_ERROR,
+        }
+    }
+}
+
+impl fmt::Debug for SubscribeError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        error::error_chain_fmt(self, f)
+    }
+}
 
 #[derive(serde::Deserialize)]
 pub struct FormData {
@@ -106,100 +130,6 @@ pub async fn send_confirmation_email(
         .await
 }
 
-#[derive(thiserror::Error)]
-pub enum SubscribeError {
-    #[error("{0}")]
-    ValidationError(String),
-    #[error(transparent)]
-    UnexpectedError(#[from] anyhow::Error),
-}
-
-impl ResponseError for SubscribeError {
-    fn status_code(&self) -> reqwest::StatusCode {
-        match self {
-            SubscribeError::ValidationError(_) => StatusCode::BAD_REQUEST,
-            SubscribeError::UnexpectedError(_) => StatusCode::INTERNAL_SERVER_ERROR,
-        }
-    }
-}
-
-impl fmt::Debug for SubscribeError {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        error_chain_fmt(self, f)
-    }
-}
-
-pub struct InsertSubscriberError(sqlx::Error);
-
-impl From<sqlx::Error> for InsertSubscriberError {
-    fn from(value: sqlx::Error) -> Self {
-        Self(value)
-    }
-}
-
-impl std::error::Error for InsertSubscriberError {
-    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
-        Some(&self.0)
-    }
-}
-
-impl fmt::Display for InsertSubscriberError {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(
-            f,
-            "A database error was encountered while inserting a new subcriber."
-        )
-    }
-}
-
-impl fmt::Debug for InsertSubscriberError {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        error_chain_fmt(self, f)
-    }
-}
-
-pub struct StoreTokenError(sqlx::Error);
-
-impl From<sqlx::Error> for StoreTokenError {
-    fn from(value: sqlx::Error) -> Self {
-        Self(value)
-    }
-}
-
-impl std::error::Error for StoreTokenError {
-    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
-        Some(&self.0)
-    }
-}
-
-impl fmt::Display for StoreTokenError {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(
-            f,
-            "A database error was encountered while trying to store a subscription token."
-        )
-    }
-}
-
-impl fmt::Debug for StoreTokenError {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        error_chain_fmt(self, f)
-    }
-}
-
-fn error_chain_fmt(
-    err: &impl std::error::Error,
-    f: &mut std::fmt::Formatter<'_>,
-) -> std::fmt::Result {
-    writeln!(f, "{}\n", err)?;
-    let mut current = err.source();
-    while let Some(source) = current {
-        writeln!(f, "Caused by:\n\t{}", source)?;
-        current = source.source();
-    }
-    Ok(())
-}
-
 #[tracing::instrument(
     name = "Persisting new subscriber details in database",
     skip(new_subscriber, transaction)
@@ -207,7 +137,7 @@ fn error_chain_fmt(
 pub async fn insert_subscriber(
     new_subscriber: &NewSubscriber,
     transaction: &mut Transaction<'_, Postgres>,
-) -> Result<Uuid, InsertSubscriberError> {
+) -> Result<Uuid, anyhow::Error> {
     let subscriber_id = Uuid::new_v4();
     sqlx::query!(
         r#"
@@ -222,11 +152,7 @@ pub async fn insert_subscriber(
     // https://stackoverflow.com/questions/64654769/how-to-build-and-commit-multi-query-transaction-in-sqlx
     .execute(&mut **transaction)
     .await
-    .map_err(|e| {
-        // careful with GDPR, this logs email when unique constraint errors
-        tracing::error!("Failed to persist new subscriber: {:?}", e);
-        e
-    })?;
+    .with_context(|| "A database error was encountered while inserting a new subcriber.")?;
 
     Ok(subscriber_id)
 }
@@ -239,7 +165,7 @@ pub async fn store_token(
     transaction: &mut Transaction<'_, Postgres>,
     subscriber_id: &Uuid,
     token: &str,
-) -> Result<(), StoreTokenError> {
+) -> Result<(), anyhow::Error> {
     sqlx::query!(
         r#"
         INSERT INTO t_subscription_tokens (subscription_token, subscriber_id)
@@ -251,9 +177,8 @@ pub async fn store_token(
     // https://stackoverflow.com/questions/64654769/how-to-build-and-commit-multi-query-transaction-in-sqlx
     .execute(&mut **transaction)
     .await
-    .map_err(|e| {
-        tracing::error!("Failed to store subscription token: {:?}", e);
-        e
+    .with_context(|| {
+        "A database error was encountered while trying to store a subscription token."
     })?;
 
     Ok(())
