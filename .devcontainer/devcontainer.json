@@ -34,7 +34,9 @@
 		"vscode": {
 			"extensions": [
 				"ms-azuretools.vscode-docker",
-				"pflannery.vscode-versionlens"
+				"pflannery.vscode-versionlens",
+				"mtxr.sqltools",
+				"mtxr.sqltools-driver-pg"
 			]
 		}
 	}
