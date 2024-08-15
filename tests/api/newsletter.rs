@@ -1,6 +1,41 @@
+use reqwest::StatusCode;
 use wiremock::{http::Method, matchers::{any, method, path}, Mock, ResponseTemplate};
 
 use crate::helpers::{spawn_app, ConfirmationLinks, TestApp};
+
+#[tokio::test]
+pub async fn newsletters_returns_400_on_invalid_data() {
+    let app = spawn_app().await;
+    let test_cases = vec![
+        (
+            serde_json::json!({
+                "content": {
+                    "text": "Newsletter body as plain text",
+                    "html": "<p>Newsletter body as HTML</p>",
+                }
+            }),
+            "missing title"
+        ),
+        (
+            serde_json::json!({
+                "title": "Newsletter title",
+            }),
+            "missing content"
+        ),
+    ];
+
+    for (invalid_body, error_message) in test_cases {
+        let response = app.post_newsletters(invalid_body).await;
+
+        assert_eq!(
+            StatusCode::BAD_REQUEST,
+            response.status(),
+            "The API did not fail with {} when the payload was {}.",
+            StatusCode::BAD_REQUEST,
+            error_message
+        )
+    }    
+}
 
 #[tokio::test]
 pub async fn newsletters_are_not_delivered_to_unconfirmed_subscribers() {
@@ -16,19 +51,14 @@ pub async fn newsletters_are_not_delivered_to_unconfirmed_subscribers() {
     let newsletter_json_body = serde_json::json!({
         "title": "Newsletter title",
         "content": {
-            "test": "Newsletter body as plain text",
+            "text": "Newsletter body as plain text",
             "html": "<p>Newsletter body as HTML</p>",
         }
     });
 
-    let response = reqwest::Client::new()
-        .post(&format!("http://{}/newsletters", &app.app_address))
-        .json(&newsletter_json_body)
-        .send()
-        .await
-        .expect("Failed to execute request.");
+    let response = app.post_newsletters(newsletter_json_body).await;
 
-    assert_eq!(response.status().as_u16(), 200);
+    assert_eq!(response.status(), StatusCode::OK);
 }
 
 #[tokio::test]
@@ -45,19 +75,14 @@ pub async fn newsletters_are_delivered_to_confirmed_subscribers() {
     let newsletter_json_body = serde_json::json!({
         "title": "Newsletter title",
         "content": {
-            "test": "Newsletter body as plain text",
+            "text": "Newsletter body as plain text",
             "html": "<p>Newsletter body as HTML</p>",
         }
     });
 
-    let response = reqwest::Client::new()
-        .post(&format!("http://{}/newsletters", &app.app_address))
-        .json(&newsletter_json_body)
-        .send()
-        .await
-        .expect("Failed to execute request.");
+    let response = app.post_newsletters(newsletter_json_body).await;
 
-    assert_eq!(response.status().as_u16(), 200);
+    assert_eq!(response.status(), StatusCode::OK);
 }
 
 async fn create_confirmed_subscriber(app: &TestApp) {
