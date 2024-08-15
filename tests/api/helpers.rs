@@ -52,7 +52,7 @@ impl TestApp {
             .expect("Failed to execute request.")
     }
 
-    pub async fn get_confirmation_links(
+    pub fn get_confirmation_links(
         &self,
         email_request: &wiremock::Request,
     ) -> ConfirmationLinks {

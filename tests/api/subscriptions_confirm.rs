@@ -32,7 +32,7 @@ async fn link_returned_by_subscribe_returns_200_ok_if_called() {
     let _ = app.post_subscriptions(body.into()).await;
 
     let email_request = &app.email_server.received_requests().await.unwrap()[0];
-    let confirmation_links = app.get_confirmation_links(email_request).await;
+    let confirmation_links = app.get_confirmation_links(email_request);
 
     let response = reqwest::get(confirmation_links.html_link).await.unwrap();
 
@@ -53,7 +53,7 @@ async fn link_returned_by_subscribe_confirms_subscription() {
     let _ = app.post_subscriptions(body.into()).await;
 
     let email_request = &app.email_server.received_requests().await.unwrap()[0];
-    let confirmation_links = app.get_confirmation_links(email_request).await;
+    let confirmation_links = app.get_confirmation_links(email_request);
 
     let _ = reqwest::get(confirmation_links.html_link)
         .await
