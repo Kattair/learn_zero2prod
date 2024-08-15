@@ -7,7 +7,7 @@ use tracing_actix_web::TracingLogger;
 use crate::{
     configuration::{DatabaseSettings, Settings},
     email_client::EmailClient,
-    routes::{confirm_subscription, health_check, subscribe},
+    routes::{confirm_subscription, health_check, publish_newsletter, subscribe},
 };
 
 pub struct Application {
@@ -82,6 +82,7 @@ fn run(
                 "/subscriptions/confirm",
                 web::get().to(confirm_subscription),
             )
+            .route("/newsletters", web::post().to(publish_newsletter))
     })
     .listen(tcp_listener)?
     .run();
