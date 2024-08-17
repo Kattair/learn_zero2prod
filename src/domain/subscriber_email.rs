@@ -1,3 +1,5 @@
+use std::fmt;
+
 use validator::validate_email;
 
 #[derive(Debug, serde::Serialize)]
@@ -16,6 +18,12 @@ impl SubscriberEmail {
 impl AsRef<str> for SubscriberEmail {
     fn as_ref(&self) -> &str {
         &self.0
+    }
+}
+
+impl fmt::Display for SubscriberEmail {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        self.0.fmt(f)
     }
 }
 
