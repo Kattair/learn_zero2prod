@@ -55,6 +55,7 @@ impl TestApp {
     pub async fn post_newsletters(&self, body: serde_json::Value) -> Response {
         reqwest::Client::new()
             .post(&format!("http://{}/newsletters", &self.app_address))
+            .basic_auth(Uuid::new_v4(), Some(Uuid::new_v4()))
             .json(&body)
             .send()
             .await
