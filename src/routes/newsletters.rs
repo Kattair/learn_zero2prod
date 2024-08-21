@@ -2,6 +2,7 @@ use std::fmt::{self, Debug};
 
 use actix_web::{http::header::{self, HeaderMap}, web, HttpRequest, HttpResponse, ResponseError};
 use anyhow::{anyhow, Context};
+use argon2::{Argon2, PasswordHash, PasswordVerifier};
 use base64::Engine;
 use reqwest::{header::{HeaderName, HeaderValue}, StatusCode};
 use secrecy::{ExposeSecret, Secret};
@@ -125,24 +126,32 @@ fn basic_authentication(headers: &HeaderMap) -> Result<Credentials, anyhow::Erro
 }
 
 async fn validate_credentials(credentials: &Credentials, pool: &PgPool) -> Result<uuid::Uuid, PublishError> {
-    let user_id = sqlx::query!(
+    let row = sqlx::query!(
         r#"
-            SELECT user_id
+            SELECT user_id, password_hash
             FROM t_users
-            WHERE username = $1 and password = $2
+            WHERE username = $1
         "#,
         credentials.username,
-        credentials.password.expose_secret()
     )
     .fetch_optional(pool)
     .await
-    .context("Faile to perform query to validate user credentials.")
-    .map_err(PublishError::UnexpectedError)?;
+    .context("Failed to perform query to validate user credentials.")
+    .map_err(PublishError::UnexpectedError)?
+    .ok_or_else(|| {
+        PublishError::AuthError(anyhow!("Unknown username."))
+    })?;
 
-    user_id
-        .map(|row| row.user_id)
-        .ok_or_else(|| anyhow!("Invlid username or password."))
-        .map_err(PublishError::AuthError)
+    let expected_password_hash = PasswordHash::new(&row.password_hash)
+        .context("Failed to parse hash in PHC string format.")
+        .map_err(PublishError::UnexpectedError)?;
+
+    Argon2::default()
+        .verify_password(credentials.password.expose_secret().as_bytes(), &expected_password_hash)
+        .context("Invalid password.")
+        .map_err(PublishError::AuthError)?;
+
+    Ok(row.user_id)
 }
 
 struct ConfirmedSubscriber {

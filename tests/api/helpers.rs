@@ -1,3 +1,5 @@
+use argon2::password_hash::SaltString;
+use argon2::{Argon2, PasswordHasher};
 use once_cell::sync::Lazy;
 use reqwest::{header, Response};
 use serde_json::Value;
@@ -34,6 +36,43 @@ pub struct TestApp {
     pub app_port: u16,
     pub connection_pool: PgPool,
     pub email_server: MockServer,
+    pub test_user: TestUser,
+}
+
+pub struct TestUser {
+    user_id: uuid::Uuid,
+    username: String,
+    password: String,
+}
+
+impl TestUser {
+    pub fn generate() -> Self {
+        Self {
+            user_id: uuid::Uuid::new_v4(),
+            username: uuid::Uuid::new_v4().to_string(),
+            password: uuid::Uuid::new_v4().to_string()
+        }
+    }
+
+    pub async fn store(&self, pool: &PgPool) {
+        let salt = SaltString::generate(&mut rand::thread_rng());
+        let password_hash = Argon2::default()
+            .hash_password(self.password.as_bytes(), &salt)
+            .unwrap()
+            .to_string();
+        sqlx::query!(
+            r#"
+                INSERT INTO t_users (user_id, username, password_hash)
+                VALUES ($1, $2, $3)
+            "#,
+            self.user_id,
+            self.username,
+            password_hash,
+        )
+        .execute(pool)
+        .await
+        .expect("Failed to create test user.");
+    }
 }
 
 pub struct ConfirmationLinks {
@@ -53,10 +92,9 @@ impl TestApp {
     }
 
     pub async fn post_newsletters(&self, body: serde_json::Value) -> Response {
-        let (username, password) = self.test_user().await;
         reqwest::Client::new()
             .post(&format!("http://{}/newsletters", &self.app_address))
-            .basic_auth(username, Some(password))
+            .basic_auth(&self.test_user.username, Some(&self.test_user.password))
             .json(&body)
             .send()
             .await
@@ -89,21 +127,6 @@ impl TestApp {
             text_link,
         }
     }
-
-    pub async fn test_user(&self) -> (String, String) {
-        let row = sqlx::query!(
-            r#"
-                SELECT username, password
-                FROM t_users
-                LIMIT 1
-            "#
-        )
-        .fetch_one(&self.connection_pool)
-        .await
-        .expect("Failed to fetch test user.");
-
-        (row.username, row.password)
-    }
 }
 
 /// Starts an instance of this app in the background and returns the address it's running at
@@ -131,24 +154,10 @@ pub async fn spawn_app() -> TestApp {
         app_port: port,
         connection_pool: get_connection_pool(&configuration.database),
         email_server,
+        test_user: TestUser::generate(),
     };
-    add_test_user(&test_app.connection_pool).await;
+    test_app.test_user.store(&test_app.connection_pool).await;
     test_app
-}
-
-async fn add_test_user(pool: &PgPool) {
-    sqlx::query!(
-        r#"
-            INSERT INTO t_users (user_id, username, password)
-            VALUES ($1, $2, $3)
-        "#,
-        uuid::Uuid::new_v4(),
-        uuid::Uuid::new_v4().to_string(),
-        uuid::Uuid::new_v4().to_string()
-    )
-    .execute(pool)
-    .await
-    .expect("Failed to create test user.");
 }
 
 async fn configure_db(config: &DatabaseSettings) -> PgPool {

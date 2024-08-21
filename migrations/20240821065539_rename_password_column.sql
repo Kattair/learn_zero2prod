@@ -1,0 +1,1 @@
+ALTER TABLE t_users RENAME password TO password_hash;
