@@ -131,12 +131,17 @@ fn basic_authentication(headers: &HeaderMap) -> Result<Credentials, anyhow::Erro
     skip(credentials, pool),
 )]
 async fn validate_credentials(credentials: Credentials, pool: &PgPool) -> Result<uuid::Uuid, PublishError> {
-    let (user_id, expected_password_hash) = get_stored_credentials(&credentials.username, pool)
+    let mut user_id = None;
+    let mut expected_password_hash = Secret::new(
+        "$argon2id$v=19$m=15000,t=2,p=1$8IKX9HPbtAcLjsMNmh3VAw$jAMZZuiHZyqOYYbmbvPzepp6q1zds5nlLsgwnwCXANQ".to_string()
+    );
+    if let Some((stored_user_id, stored_password_hash)) = get_stored_credentials(&credentials.username, pool)
         .await
         .map_err(PublishError::UnexpectedError)?
-        .ok_or_else(|| {
-            PublishError::AuthError(anyhow!("Unknown username."))
-        })?;
+    {
+        user_id = Some(stored_user_id);
+        expected_password_hash = stored_password_hash;
+    }
 
     spawn_blocking_with_tracing(move || {
         verify_password_hash(expected_password_hash, credentials.password)
@@ -145,7 +150,9 @@ async fn validate_credentials(credentials: Credentials, pool: &PgPool) -> Result
     .context("Failed to spawn blocking task.")
     .map_err(PublishError::UnexpectedError)??;
 
-    Ok(user_id)
+    user_id.ok_or_else(||
+        PublishError::AuthError(anyhow!("Unknown username."))
+    )
 }
 
 #[tracing::instrument(
