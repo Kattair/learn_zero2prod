@@ -7,3 +7,4 @@ RUN apt update \
 USER vscode
 RUN cargo install sqlx-cli --no-default-features --features rustls,postgres
 RUN cargo install bunyan
+RUN cargo install cargo-watch
