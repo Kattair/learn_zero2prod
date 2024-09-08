@@ -1,6 +1,7 @@
 use std::net::TcpListener;
 
 use actix_web::{dev::Server, web, App, HttpServer};
+use secrecy::Secret;
 use sqlx::{postgres::PgPoolOptions, PgPool};
 use tracing_actix_web::TracingLogger;
 
@@ -14,6 +15,9 @@ pub struct Application {
     port: u16,
     server: Server,
 }
+
+#[derive(serde::Deserialize, Clone)]
+pub struct HmacSecret(pub Secret<String>);
 
 pub struct ApplicationBaseUrl(pub String);
 
@@ -39,8 +43,12 @@ impl Application {
         );
         let tcp_listener = TcpListener::bind(address)?;
         let port = tcp_listener.local_addr().unwrap().port();
-        let app_base_url = configuration.application.base_url.as_ref();
-        let server = run(tcp_listener, connection_pool, email_client, app_base_url)?;
+        let server = run(
+            tcp_listener,
+            connection_pool,
+            email_client,
+            configuration.application.base_url.clone(),
+            configuration.application.hmac_secret.clone())?;
 
         Ok(Self { port, server })
     }
@@ -64,11 +72,13 @@ fn run(
     tcp_listener: TcpListener,
     connection_pool: PgPool,
     email_client: EmailClient,
-    app_base_url: &str,
+    app_base_url: String,
+    hmac_secret: HmacSecret,
 ) -> Result<Server, std::io::Error> {
     let connection_pool = web::Data::new(connection_pool);
     let email_client = web::Data::new(email_client);
     let app_base_url = web::Data::new(ApplicationBaseUrl(app_base_url.to_owned()));
+    let hmac_secret = web::Data::new(hmac_secret);
 
     let server = HttpServer::new(move || {
         App::new()
@@ -76,6 +86,7 @@ fn run(
             .app_data(connection_pool.clone())
             .app_data(email_client.clone())
             .app_data(app_base_url.clone())
+            .app_data(hmac_secret.clone())
             .route("/", web::get().to(home))
             .route("/login", web::get().to(login_form))
             .route("/login", web::post().to(login))

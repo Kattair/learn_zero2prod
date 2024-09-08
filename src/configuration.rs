@@ -6,7 +6,7 @@ use sqlx::{
     ConnectOptions,
 };
 
-use crate::domain::SubscriberEmail;
+use crate::{domain::SubscriberEmail, startup::HmacSecret};
 
 #[derive(serde::Deserialize)]
 pub struct Settings {
@@ -30,6 +30,7 @@ pub struct ApplicationSettings {
     pub host: Ipv4Addr,
     pub port: u16,
     pub base_url: String,
+    pub hmac_secret: HmacSecret,
 }
 
 #[derive(serde::Deserialize)]
