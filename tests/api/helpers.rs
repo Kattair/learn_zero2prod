@@ -3,7 +3,8 @@ use argon2::Algorithm::Argon2id;
 use argon2::Version::V0x13;
 use argon2::{Argon2, Params, PasswordHasher};
 use once_cell::sync::Lazy;
-use reqwest::{header, Response};
+use reqwest::redirect::Policy;
+use reqwest::{header, Response, StatusCode};
 use serde_json::Value;
 use wiremock::MockServer;
 use zero2prod::startup::{get_connection_pool, Application};
@@ -52,20 +53,16 @@ impl TestUser {
         Self {
             user_id: uuid::Uuid::new_v4(),
             username: uuid::Uuid::new_v4().to_string(),
-            password: uuid::Uuid::new_v4().to_string()
+            password: uuid::Uuid::new_v4().to_string(),
         }
     }
 
     pub async fn store(&self, pool: &PgPool) {
         let salt = SaltString::generate(&mut rand::thread_rng());
-        let password_hash = Argon2::new(
-            Argon2id,
-            V0x13,
-            Params::new(15000, 2, 1, None).unwrap(),
-        )
-        .hash_password(self.password.as_bytes(), &salt)
-        .unwrap()
-        .to_string();
+        let password_hash = Argon2::new(Argon2id, V0x13, Params::new(15000, 2, 1, None).unwrap())
+            .hash_password(self.password.as_bytes(), &salt)
+            .unwrap()
+            .to_string();
         sqlx::query!(
             r#"
                 INSERT INTO t_users (user_id, username, password_hash)
@@ -87,6 +84,21 @@ pub struct ConfirmationLinks {
 }
 
 impl TestApp {
+    pub async fn post_login<Body>(&self, body: &Body) -> Response
+    where
+        Body: serde::Serialize,
+    {
+        reqwest::Client::builder()
+            .redirect(Policy::none())
+            .build()
+            .unwrap()
+            .post(format!("http://{}/login", &self.app_address))
+            .form(body)
+            .send()
+            .await
+            .expect("Failed to execute request.")
+    }
+
     pub async fn post_subscriptions(&self, body: String) -> Response {
         reqwest::Client::new()
             .post(format!("http://{}/subscriptions", &self.app_address))
@@ -107,10 +119,7 @@ impl TestApp {
             .expect("Failed to execute request.")
     }
 
-    pub fn get_confirmation_links(
-        &self,
-        email_request: &wiremock::Request,
-    ) -> ConfirmationLinks {
+    pub fn get_confirmation_links(&self, email_request: &wiremock::Request) -> ConfirmationLinks {
         let body: Value = serde_json::from_slice(&email_request.body).unwrap();
         let get_link = |s: &str| {
             let links: Vec<_> = linkify::LinkFinder::new()
@@ -184,4 +193,9 @@ async fn configure_db(config: &DatabaseSettings) -> PgPool {
         .expect("Failed to migrate the database.");
 
     connection_pool
+}
+
+pub fn assert_is_redirect_to(response: &Response, location: &str) {
+    assert_eq!(response.status(), StatusCode::SEE_OTHER);
+    assert_eq!(response.headers().get(header::LOCATION).unwrap(), location);
 }

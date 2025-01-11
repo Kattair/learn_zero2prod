@@ -1,11 +1,21 @@
 use std::fmt;
 
-use actix_web::{error::InternalError, http::header::{self, ContentType}, web::{self, Query}, HttpResponse};
+use actix_web::{
+    cookie::Cookie,
+    error::InternalError,
+    http::header::{self, ContentType},
+    web::{self, Query},
+    HttpResponse,
+};
 use hmac::{Hmac, Mac};
-use secrecy::{Secret, ExposeSecret};
+use secrecy::{ExposeSecret, Secret};
 use sqlx::PgPool;
 
-use crate::{authentication::{self, AuthError, Credentials}, error::error_chain_fmt, startup::HmacSecret};
+use crate::{
+    authentication::{self, AuthError, Credentials},
+    error::error_chain_fmt,
+    startup::HmacSecret,
+};
 
 #[derive(serde::Deserialize, Debug)]
 pub struct LoginFormData {
@@ -36,12 +46,10 @@ pub struct LoginQueryParams {
 impl LoginQueryParams {
     fn verify(self, secret: &HmacSecret) -> Result<String, anyhow::Error> {
         let tag = hex::decode(self.tag)?;
-        let query_string = format!(
-            "error={}",
-            urlencoding::Encoded::new(&self.error)
-        );
+        let query_string = format!("error={}", urlencoding::Encoded::new(&self.error));
 
-        let mut mac = Hmac::<sha2::Sha256>::new_from_slice(secret.0.expose_secret().as_bytes()).unwrap();
+        let mut mac =
+            Hmac::<sha2::Sha256>::new_from_slice(secret.0.expose_secret().as_bytes()).unwrap();
         mac.update(query_string.as_bytes());
         mac.verify_slice(&tag)?;
 
@@ -49,16 +57,17 @@ impl LoginQueryParams {
     }
 }
 
-#[tracing::instrument(
-    skip(hmac_secret),
-)]
-pub async fn login_form(query: Option<Query<LoginQueryParams>>, hmac_secret: web::Data<HmacSecret>) -> HttpResponse {
+#[tracing::instrument(skip(hmac_secret))]
+pub async fn login_form(
+    query: Option<Query<LoginQueryParams>>,
+    hmac_secret: web::Data<HmacSecret>,
+) -> HttpResponse {
     let error_html = match query {
         None => "".into(),
         Some(query) => match query.0.verify(&hmac_secret) {
             Ok(error) => {
                 format!("<p><i>{}</i></p>", htmlescape::encode_minimal(&error))
-            },
+            }
             Err(e) => {
                 tracing::warn!(
                     error.message = %e,
@@ -67,7 +76,7 @@ pub async fn login_form(query: Option<Query<LoginQueryParams>>, hmac_secret: web
                 );
                 "".into()
             }
-        }
+        },
     };
     HttpResponse::Ok()
         .content_type(ContentType::html())
@@ -85,39 +94,26 @@ pub async fn login(
 ) -> Result<HttpResponse, InternalError<LoginError>> {
     let credentials = Credentials {
         username: form.0.username,
-        password: form.0.password
+        password: form.0.password,
     };
-    tracing::Span::current()
-        .record("username", &tracing::field::display(&credentials.username));
+    tracing::Span::current().record("username", &tracing::field::display(&credentials.username));
     match authentication::validate_credentials(credentials, &pool).await {
         Ok(user_id) => {
             tracing::Span::current().record("user_id", tracing::field::display(&user_id));
-            Ok(
-                HttpResponse::SeeOther()
-                    .insert_header((header::LOCATION, "/"))
-                    .finish()
-            )
-        },
+            Ok(HttpResponse::SeeOther()
+                .insert_header((header::LOCATION, "/"))
+                .finish())
+        }
         Err(e) => {
             let e = match e {
                 AuthError::InvalidCredentials(_) => LoginError::AuthError(e.into()),
                 AuthError::UnexpectedError(_) => LoginError::UnexpectedError(e.into()),
             };
-            let query_string = format!("error={}", urlencoding::Encoded::new(e.to_string()));
-
-            let hmac_tag = {
-                let mut mac = Hmac::<sha2::Sha256>::new_from_slice(hmac_secret.0.expose_secret().as_bytes()).unwrap();
-                mac.update(query_string.as_bytes());
-                mac.finalize().into_bytes()
-            };
-
-            Err(
-                InternalError::from_response(
-                    e,
-                    HttpResponse::SeeOther()
-                        .insert_header((header::LOCATION, format!("/login?{query_string}&tag={hmac_tag:x}")))
-                        .finish())
-            )
+            let response = HttpResponse::SeeOther()
+                .insert_header((header::LOCATION, "/login"))
+                .cookie(Cookie::new("_flash", e.to_string()))
+                .finish();
+            Err(InternalError::from_response(e, response))
         }
     }
 }
