@@ -1,12 +1,12 @@
-use std::fmt;
+use std::fmt::{self, Write};
 
 use actix_web::{
-    cookie::Cookie,
     error::InternalError,
     http::header::{self, ContentType},
     web::{self},
-    HttpRequest, HttpResponse,
+    HttpResponse,
 };
+use actix_web_flash_messages::{FlashMessage, IncomingFlashMessages, Level};
 use secrecy::Secret;
 use sqlx::PgPool;
 
@@ -35,22 +35,16 @@ impl fmt::Debug for LoginError {
     }
 }
 
-#[tracing::instrument()]
-pub async fn login_form(request: HttpRequest) -> HttpResponse {
-    let error_html: String = match request.cookie("_flash") {
-        None => "".into(),
-        Some(cookie) => {
-            format!("<p><i>{}</i></p>", cookie.value())
-        }
-    };
+#[tracing::instrument(skip(flash_messages))]
+pub async fn login_form(flash_messages: IncomingFlashMessages) -> HttpResponse {
+    let mut error_html = String::new();
+    for m in flash_messages.iter().filter(|m| m.level() == Level::Error) {
+        writeln!(error_html, "<p><i>{}</i></p>", m.content()).unwrap();
+    }
 
-    let mut response = HttpResponse::Ok()
+    HttpResponse::Ok()
         .content_type(ContentType::html())
-        .body(format!(include_str!("login.html"), error_html = error_html));
-    response
-        .add_removal_cookie(&Cookie::new("_flash", ""))
-        .unwrap();
-    response
+        .body(format!(include_str!("login.html"), error_html = error_html))
 }
 
 #[tracing::instrument(
@@ -78,9 +72,9 @@ pub async fn login(
                 AuthError::InvalidCredentials(_) => LoginError::AuthError(e.into()),
                 AuthError::UnexpectedError(_) => LoginError::UnexpectedError(e.into()),
             };
+            FlashMessage::error(e.to_string()).send();
             let response = HttpResponse::SeeOther()
                 .insert_header((header::LOCATION, "/login"))
-                .cookie(Cookie::new("_flash", e.to_string()))
                 .finish();
             Err(InternalError::from_response(e, response))
         }

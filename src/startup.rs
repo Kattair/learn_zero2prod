@@ -1,14 +1,17 @@
 use std::net::TcpListener;
 
-use actix_web::{dev::Server, web, App, HttpServer};
-use secrecy::Secret;
+use actix_web::{cookie::Key, dev::Server, web, App, HttpServer};
+use actix_web_flash_messages::{storage::CookieMessageStore, FlashMessagesFramework};
+use secrecy::{ExposeSecret, Secret};
 use sqlx::{postgres::PgPoolOptions, PgPool};
 use tracing_actix_web::TracingLogger;
 
 use crate::{
     configuration::{DatabaseSettings, Settings},
     email_client::EmailClient,
-    routes::{confirm_subscription, health_check, home, login, login_form, publish_newsletter, subscribe},
+    routes::{
+        confirm_subscription, health_check, home, login, login_form, publish_newsletter, subscribe,
+    },
 };
 
 pub struct Application {
@@ -48,7 +51,8 @@ impl Application {
             connection_pool,
             email_client,
             configuration.application.base_url.clone(),
-            configuration.application.hmac_secret.clone())?;
+            configuration.application.hmac_secret.clone(),
+        )?;
 
         Ok(Self { port, server })
     }
@@ -80,8 +84,13 @@ fn run(
     let app_base_url = web::Data::new(ApplicationBaseUrl(app_base_url.to_owned()));
     let hmac_secret = web::Data::new(hmac_secret);
 
+    let message_store =
+        CookieMessageStore::builder(Key::from(hmac_secret.0.expose_secret().as_bytes())).build();
+    let message_framework = FlashMessagesFramework::builder(message_store).build();
+
     let server = HttpServer::new(move || {
         App::new()
+            .wrap(message_framework.clone())
             .wrap(TracingLogger::default())
             .app_data(connection_pool.clone())
             .app_data(email_client.clone())

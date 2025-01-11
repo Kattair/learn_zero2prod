@@ -1,6 +1,6 @@
 application:
   port: 8000
-  hmac_secret: 12345678
+  hmac_secret: 1234567812345678123456781234567812345678123456781234567812345678
 database:
   username: postgres
   password: password

@@ -12,6 +12,7 @@ name = "zero2prod"
 
 [dependencies]
 actix-web = "4"
+actix-web-flash-messages = { version = "0.5", features = ["cookies"] }
 anyhow = "1.0.82"
 argon2 = { version = "0.5.3", features = ["std"] }
 base64 = "0.22.1"
