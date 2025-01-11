@@ -17,13 +17,10 @@ argon2 = { version = "0.5.3", features = ["std"] }
 base64 = "0.22.1"
 chrono = { version = "0.4.34", default-features = false, features = ["clock"] }
 config = "0.14"
-hex = "0.4.3"
-hmac = { version = "0.12.1", features = ["std"] }
 htmlescape = "0.3.1"
 rand = "0.8.5"
 secrecy = { version = "0.8", features = ["serde"] }
 serde = { version = "1", features = ["derive"] }
-sha2 = "0.10.8"
 thiserror = "1.0.58"
 tokio = { version = "1", features = ["macros", "rt-multi-thread"] }
 tracing = { version = "0.1", features = ["log"] }

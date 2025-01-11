@@ -4,17 +4,15 @@ use actix_web::{
     cookie::Cookie,
     error::InternalError,
     http::header::{self, ContentType},
-    web::{self, Query},
-    HttpResponse,
+    web::{self},
+    HttpRequest, HttpResponse,
 };
-use hmac::{Hmac, Mac};
-use secrecy::{ExposeSecret, Secret};
+use secrecy::Secret;
 use sqlx::PgPool;
 
 use crate::{
     authentication::{self, AuthError, Credentials},
     error::error_chain_fmt,
-    startup::HmacSecret,
 };
 
 #[derive(serde::Deserialize, Debug)]
@@ -37,60 +35,31 @@ impl fmt::Debug for LoginError {
     }
 }
 
-#[derive(serde::Deserialize, Debug)]
-pub struct LoginQueryParams {
-    error: String,
-    tag: String,
-}
-
-impl LoginQueryParams {
-    fn verify(self, secret: &HmacSecret) -> Result<String, anyhow::Error> {
-        let tag = hex::decode(self.tag)?;
-        let query_string = format!("error={}", urlencoding::Encoded::new(&self.error));
-
-        let mut mac =
-            Hmac::<sha2::Sha256>::new_from_slice(secret.0.expose_secret().as_bytes()).unwrap();
-        mac.update(query_string.as_bytes());
-        mac.verify_slice(&tag)?;
-
-        Ok(self.error)
-    }
-}
-
-#[tracing::instrument(skip(hmac_secret))]
-pub async fn login_form(
-    query: Option<Query<LoginQueryParams>>,
-    hmac_secret: web::Data<HmacSecret>,
-) -> HttpResponse {
-    let error_html = match query {
+#[tracing::instrument()]
+pub async fn login_form(request: HttpRequest) -> HttpResponse {
+    let error_html: String = match request.cookie("_flash") {
         None => "".into(),
-        Some(query) => match query.0.verify(&hmac_secret) {
-            Ok(error) => {
-                format!("<p><i>{}</i></p>", htmlescape::encode_minimal(&error))
-            }
-            Err(e) => {
-                tracing::warn!(
-                    error.message = %e,
-                    error.cause_chain = ?e,
-                    "Failed to verify query parameters using the HMAC tag"
-                );
-                "".into()
-            }
-        },
+        Some(cookie) => {
+            format!("<p><i>{}</i></p>", cookie.value())
+        }
     };
-    HttpResponse::Ok()
+
+    let mut response = HttpResponse::Ok()
         .content_type(ContentType::html())
-        .body(format!(include_str!("login.html"), error_html = error_html))
+        .body(format!(include_str!("login.html"), error_html = error_html));
+    response
+        .add_removal_cookie(&Cookie::new("_flash", ""))
+        .unwrap();
+    response
 }
 
 #[tracing::instrument(
-    skip(form, pool, hmac_secret),
+    skip(form, pool),
     fields(username=tracing::field::Empty, user_id=tracing::field::Empty)
 )]
 pub async fn login(
     form: web::Form<LoginFormData>,
     pool: web::Data<PgPool>,
-    hmac_secret: web::Data<HmacSecret>,
 ) -> Result<HttpResponse, InternalError<LoginError>> {
     let credentials = Credentials {
         username: form.0.username,

@@ -40,6 +40,7 @@ pub struct TestApp {
     pub connection_pool: PgPool,
     pub email_server: MockServer,
     pub test_user: TestUser,
+    pub api_client: reqwest::Client,
 }
 
 pub struct TestUser {
@@ -88,10 +89,7 @@ impl TestApp {
     where
         Body: serde::Serialize,
     {
-        reqwest::Client::builder()
-            .redirect(Policy::none())
-            .build()
-            .unwrap()
+        self.api_client
             .post(format!("http://{}/login", &self.app_address))
             .form(body)
             .send()
@@ -99,8 +97,19 @@ impl TestApp {
             .expect("Failed to execute request.")
     }
 
+    pub async fn get_login_html(&self) -> String {
+        self.api_client
+            .get(format!("http://{}/login", &self.app_address))
+            .send()
+            .await
+            .expect("Failed to execute request.")
+            .text()
+            .await
+            .unwrap()
+    }
+
     pub async fn post_subscriptions(&self, body: String) -> Response {
-        reqwest::Client::new()
+        self.api_client
             .post(format!("http://{}/subscriptions", &self.app_address))
             .header(header::CONTENT_TYPE, "application/x-www-form-urlencoded")
             .body(body)
@@ -110,7 +119,7 @@ impl TestApp {
     }
 
     pub async fn post_newsletters(&self, body: serde_json::Value) -> Response {
-        reqwest::Client::new()
+        self.api_client
             .post(&format!("http://{}/newsletters", &self.app_address))
             .basic_auth(&self.test_user.username, Some(&self.test_user.password))
             .json(&body)
@@ -164,12 +173,19 @@ pub async fn spawn_app() -> TestApp {
     let port = app.port();
     let _ = tokio::spawn(app.run_until_stopped());
 
+    let client = reqwest::Client::builder()
+        .redirect(Policy::none())
+        .cookie_store(true)
+        .build()
+        .unwrap();
+
     let test_app = TestApp {
         app_address: format!("{}:{}", configuration.application.host, port),
         app_port: port,
         connection_pool: get_connection_pool(&configuration.database),
         email_server,
         test_user: TestUser::generate(),
+        api_client: client,
     };
     test_app.test_user.store(&test_app.connection_pool).await;
     test_app
