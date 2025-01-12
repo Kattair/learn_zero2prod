@@ -44,9 +44,9 @@ pub struct TestApp {
 }
 
 pub struct TestUser {
-    user_id: uuid::Uuid,
-    username: String,
-    password: String,
+    pub user_id: uuid::Uuid,
+    pub username: String,
+    pub password: String,
 }
 
 impl TestUser {
@@ -100,6 +100,17 @@ impl TestApp {
     pub async fn get_login_html(&self) -> String {
         self.api_client
             .get(format!("http://{}/login", &self.app_address))
+            .send()
+            .await
+            .expect("Failed to execute request.")
+            .text()
+            .await
+            .unwrap()
+    }
+
+    pub async fn get_admin_dashboard(&self) -> String {
+        self.api_client
+            .get(format!("http://{}/admin/dashboard", &self.app_address))
             .send()
             .await
             .expect("Failed to execute request.")
