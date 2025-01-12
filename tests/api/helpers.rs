@@ -169,7 +169,9 @@ pub async fn spawn_app() -> TestApp {
 
     configure_db(&configuration.database).await;
 
-    let app = Application::build(&configuration).expect("Failed to build application.");
+    let app = Application::build(&configuration)
+        .await
+        .expect("Failed to build application.");
     let port = app.port();
     let _ = tokio::spawn(app.run_until_stopped());
 

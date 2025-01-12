@@ -1,5 +1,6 @@
 use std::net::TcpListener;
 
+use actix_session::{storage::RedisSessionStore, SessionMiddleware};
 use actix_web::{cookie::Key, dev::Server, web, App, HttpServer};
 use actix_web_flash_messages::{storage::CookieMessageStore, FlashMessagesFramework};
 use secrecy::{ExposeSecret, Secret};
@@ -25,7 +26,7 @@ pub struct HmacSecret(pub Secret<String>);
 pub struct ApplicationBaseUrl(pub String);
 
 impl Application {
-    pub fn build(configuration: &Settings) -> Result<Application, std::io::Error> {
+    pub async fn build(configuration: &Settings) -> Result<Application, anyhow::Error> {
         let connection_pool = get_connection_pool(&configuration.database);
 
         let email_config = &configuration.email_client;
@@ -52,7 +53,9 @@ impl Application {
             email_client,
             configuration.application.base_url.clone(),
             configuration.application.hmac_secret.clone(),
-        )?;
+            configuration.redis_uri.clone(),
+        )
+        .await?;
 
         Ok(Self { port, server })
     }
@@ -72,25 +75,33 @@ pub fn get_connection_pool(configuration: &DatabaseSettings) -> PgPool {
         .connect_lazy_with(configuration.with_db())
 }
 
-fn run(
+async fn run(
     tcp_listener: TcpListener,
     connection_pool: PgPool,
     email_client: EmailClient,
     app_base_url: String,
     hmac_secret: HmacSecret,
-) -> Result<Server, std::io::Error> {
+    redis_uri: Secret<String>,
+) -> Result<Server, anyhow::Error> {
     let connection_pool = web::Data::new(connection_pool);
     let email_client = web::Data::new(email_client);
     let app_base_url = web::Data::new(ApplicationBaseUrl(app_base_url.to_owned()));
     let hmac_secret = web::Data::new(hmac_secret);
 
-    let message_store =
-        CookieMessageStore::builder(Key::from(hmac_secret.0.expose_secret().as_bytes())).build();
+    let secret_key = Key::from(hmac_secret.0.expose_secret().as_bytes());
+
+    let message_store = CookieMessageStore::builder(secret_key.clone()).build();
     let message_framework = FlashMessagesFramework::builder(message_store).build();
+
+    let session_store = RedisSessionStore::new(redis_uri.expose_secret()).await?;
 
     let server = HttpServer::new(move || {
         App::new()
             .wrap(message_framework.clone())
+            .wrap(SessionMiddleware::new(
+                session_store.clone(),
+                secret_key.clone(),
+            ))
             .wrap(TracingLogger::default())
             .app_data(connection_pool.clone())
             .app_data(email_client.clone())
