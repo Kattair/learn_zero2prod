@@ -2,7 +2,7 @@ use std::fmt::{self, Write};
 
 use actix_web::{
     error::InternalError,
-    http::header::{self, ContentType},
+    http::header::ContentType,
     web::{self},
     HttpResponse,
 };
@@ -15,6 +15,7 @@ use crate::{
     authentication::{self, AuthError, Credentials},
     error::error_chain_fmt,
     session_state::TypedSession,
+    utils,
 };
 
 #[derive(serde::Deserialize, Debug)]
@@ -87,8 +88,6 @@ pub async fn login(
 fn login_redirect(e: LoginError) -> InternalError<LoginError> {
     FlashMessage::error(e.to_string()).send();
 
-    let response = HttpResponse::SeeOther()
-        .insert_header((header::LOCATION, "/login"))
-        .finish();
+    let response = utils::see_other("/login");
     InternalError::from_response(e, response)
 }
