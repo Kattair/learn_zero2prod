@@ -6,7 +6,7 @@ use actix_web::{
     web::{self},
     HttpResponse,
 };
-use actix_web_flash_messages::{FlashMessage, IncomingFlashMessages, Level};
+use actix_web_flash_messages::{FlashMessage, IncomingFlashMessages};
 use reqwest::header::LOCATION;
 use secrecy::Secret;
 use sqlx::PgPool;
@@ -40,14 +40,17 @@ impl fmt::Debug for LoginError {
 
 #[tracing::instrument(skip(flash_messages))]
 pub async fn login_form(flash_messages: IncomingFlashMessages) -> HttpResponse {
-    let mut error_html = String::new();
-    for m in flash_messages.iter().filter(|m| m.level() == Level::Error) {
-        writeln!(error_html, "<p><i>{}</i></p>", m.content()).unwrap();
+    let mut server_messages_html = String::new();
+    for m in flash_messages.iter() {
+        writeln!(server_messages_html, "<p><i>{}</i></p>", m.content()).unwrap();
     }
 
     HttpResponse::Ok()
         .content_type(ContentType::html())
-        .body(format!(include_str!("login.html"), error_html = error_html))
+        .body(format!(
+            include_str!("login.html"),
+            error_html = server_messages_html
+        ))
 }
 
 #[tracing::instrument(

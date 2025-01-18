@@ -144,6 +144,14 @@ impl TestApp {
         self.get_admin_dashboard().await.text().await.unwrap()
     }
 
+    pub async fn post_logout(&self) -> Response {
+        self.api_client
+            .post(format!("http://{}/admin/logout", &self.app_address))
+            .send()
+            .await
+            .expect("Failed to execute request.")
+    }
+
     pub async fn post_subscriptions(&self, body: String) -> Response {
         self.api_client
             .post(format!("http://{}/subscriptions", &self.app_address))
