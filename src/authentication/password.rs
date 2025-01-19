@@ -1,7 +1,7 @@
 use anyhow::{anyhow, Context};
 use argon2::{
-    password_hash::{self, SaltString},
-    Argon2, Params, PasswordHash, PasswordHasher, PasswordVerifier, Version,
+    password_hash::SaltString, Argon2, Params, PasswordHash, PasswordHasher, PasswordVerifier,
+    Version,
 };
 use secrecy::{ExposeSecret, Secret};
 use sqlx::PgPool;

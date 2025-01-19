@@ -12,7 +12,7 @@ name = "zero2prod"
 
 [dependencies]
 actix-session = { version = "0.10", features = ["redis-session-rustls"] }
-actix-web = "4"
+actix-web = "4.9"
 actix-web-flash-messages = { version = "0.5", features = ["cookies"] }
 anyhow = "1.0.82"
 argon2 = { version = "0.5.3", features = ["std"] }
