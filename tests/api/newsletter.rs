@@ -1,53 +1,46 @@
 use reqwest::StatusCode;
-use wiremock::{http::Method, matchers::{any, method, path}, Mock, ResponseTemplate};
+use wiremock::{
+    http::Method,
+    matchers::{any, method, path},
+    Mock, ResponseTemplate,
+};
 
-use crate::helpers::{spawn_app, ConfirmationLinks, TestApp};
+use crate::helpers::{assert_is_redirect_to, spawn_app, ConfirmationLinks, TestApp};
 
 #[tokio::test]
 pub async fn requests_missing_authorization_are_rejected() {
     let app = spawn_app().await;
-    let newsletter_json_body = serde_json::json!({
-        "title": "Newsletter title",
-        "content": {
-            "text": "Newsletter body as plain text",
-            "html": "<p>Newsletter body as HTML</p>",
-        }
-    });
+    let newsletter_body = "title=Newsletter%20title&plaintext=Newsletter%20body%20as%20plain%20text&html=<p>Newsletter%20body%20as%20HTML</p>";
 
-    let response = reqwest::Client::new()
-        .post(&format!("http://{}/newsletters", &app.app_address))
-        .json(&newsletter_json_body)
-        .send()
-        .await
-        .expect("Failed to execute request.");
+    let response = app.post_newsletters(newsletter_body.to_owned()).await;
 
-    assert_eq!(StatusCode::UNAUTHORIZED, response.status());
-    assert_eq!(r#"Basic realm="publish""#, response.headers()["WWW-Authenticate"]);
+    assert_is_redirect_to(&response, "/login")
 }
 
 #[tokio::test]
 pub async fn newsletters_returns_400_on_invalid_data() {
     let app = spawn_app().await;
+
+    // Act - Part 1 - Login
+    app.post_login(&serde_json::json!({
+        "username": app.test_user.username,
+        "password": app.test_user.password
+    }))
+    .await;
+
     let test_cases = vec![
         (
-            serde_json::json!({
-                "content": {
-                    "text": "Newsletter body as plain text",
-                    "html": "<p>Newsletter body as HTML</p>",
-                }
-            }),
-            "missing title"
+            "plaintext=Newsletter%20body%20as%20plain%20text&html=<p>Newsletter%20body%20as%20HTML</p>",
+            "missing title",
         ),
         (
-            serde_json::json!({
-                "title": "Newsletter title",
-            }),
-            "missing content"
+            "title=Newsletter%20title",
+            "missing content",
         ),
     ];
 
     for (invalid_body, error_message) in test_cases {
-        let response = app.post_newsletters(invalid_body).await;
+        let response = app.post_newsletters(invalid_body.to_owned()).await;
 
         assert_eq!(
             StatusCode::BAD_REQUEST,
@@ -56,7 +49,7 @@ pub async fn newsletters_returns_400_on_invalid_data() {
             StatusCode::BAD_REQUEST,
             error_message
         )
-    }    
+    }
 }
 
 #[tokio::test]
@@ -70,15 +63,16 @@ pub async fn newsletters_are_not_delivered_to_unconfirmed_subscribers() {
         .mount(&app.email_server)
         .await;
 
-    let newsletter_json_body = serde_json::json!({
-        "title": "Newsletter title",
-        "content": {
-            "text": "Newsletter body as plain text",
-            "html": "<p>Newsletter body as HTML</p>",
-        }
-    });
+    // Act - Part 1 - Login
+    app.post_login(&serde_json::json!({
+        "username": app.test_user.username,
+        "password": app.test_user.password
+    }))
+    .await;
 
-    let response = app.post_newsletters(newsletter_json_body).await;
+    let newsletter_body = "title=Newsletter%20title&plaintext=Newsletter%20body%20as%20plain%20text&html=<p>Newsletter%20body%20as%20HTML</p>";
+
+    let response = app.post_newsletters(newsletter_body.to_owned()).await;
 
     assert_eq!(response.status(), StatusCode::OK);
 }
@@ -94,15 +88,16 @@ pub async fn newsletters_are_delivered_to_confirmed_subscribers() {
         .mount(&app.email_server)
         .await;
 
-    let newsletter_json_body = serde_json::json!({
-        "title": "Newsletter title",
-        "content": {
-            "text": "Newsletter body as plain text",
-            "html": "<p>Newsletter body as HTML</p>",
-        }
-    });
+    // Act - Part 1 - Login
+    app.post_login(&serde_json::json!({
+        "username": app.test_user.username,
+        "password": app.test_user.password
+    }))
+    .await;
 
-    let response = app.post_newsletters(newsletter_json_body).await;
+    let newsletter_body = "title=Newsletter%20title&plaintext=Newsletter%20body%20as%20plain%20text&html=<p>Newsletter%20body%20as%20HTML</p>";
+
+    let response = app.post_newsletters(newsletter_body.to_owned()).await;
 
     assert_eq!(response.status(), StatusCode::OK);
 }

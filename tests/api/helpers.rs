@@ -1,3 +1,4 @@
+use actix_web::http::header::ContentType;
 use argon2::password_hash::SaltString;
 use argon2::Algorithm::Argon2id;
 use argon2::Version::V0x13;
@@ -162,11 +163,14 @@ impl TestApp {
             .expect("Failed to execute request.")
     }
 
-    pub async fn post_newsletters(&self, body: serde_json::Value) -> Response {
+    pub async fn post_newsletters(&self, body: String) -> Response {
         self.api_client
-            .post(&format!("http://{}/newsletters", &self.app_address))
-            .basic_auth(&self.test_user.username, Some(&self.test_user.password))
-            .json(&body)
+            .post(&format!("http://{}/admin/newsletters", &self.app_address))
+            .header(
+                header::CONTENT_TYPE,
+                ContentType::form_url_encoded().to_string(),
+            )
+            .body(body)
             .send()
             .await
             .expect("Failed to execute request.")

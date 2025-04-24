@@ -1,0 +1,30 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta http-equiv="content-type" content="text/html; charset=utf-8">
+    <title>Send a newsletter</title>
+</head>
+
+<body>
+    <h1>Send a newsletter</h1>
+    <form action="/admin/newsletters" method="post">
+        <label>Title
+            <input type="text" name="title" placeholder="Enter title" required>
+        </label>
+        <br>
+        <label>Text
+            <textarea name="plaintext" placeholder="Enter plaintext" required></textarea>
+        </label>
+        <br>
+        <label>Html
+            <textarea name="html" placeholder="Enter html" required></textarea>
+        </label>
+        <br>
+
+        <button type="submit">Send</button>
+    </form>
+    <p><a href="/admin/dashboard">&lt;- Back</a></p>
+</body>
+
+</html>
