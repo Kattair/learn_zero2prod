@@ -86,6 +86,14 @@ pub struct ConfirmationLinks {
 }
 
 impl TestApp {
+    pub async fn login_test_user(&self) -> Response {
+        self.post_login(&serde_json::json!({
+            "username": self.test_user.username,
+            "password": self.test_user.password
+        }))
+        .await
+    }
+
     pub async fn post_login<Body>(&self, body: &Body) -> Response
     where
         Body: serde::Serialize,

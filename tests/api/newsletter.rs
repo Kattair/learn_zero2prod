@@ -10,8 +10,8 @@ use crate::helpers::{assert_is_redirect_to, spawn_app, ConfirmationLinks, TestAp
 #[tokio::test]
 pub async fn requests_missing_authorization_are_rejected() {
     let app = spawn_app().await;
-    let newsletter_body = "title=Newsletter%20title&plaintext=Newsletter%20body%20as%20plain%20text&html=<p>Newsletter%20body%20as%20HTML</p>";
 
+    let newsletter_body = "title=Newsletter%20title&plaintext=Newsletter%20body%20as%20plain%20text&html=<p>Newsletter%20body%20as%20HTML</p>";
     let response = app.post_newsletters(newsletter_body.to_owned()).await;
 
     assert_is_redirect_to(&response, "/login")
@@ -20,13 +20,7 @@ pub async fn requests_missing_authorization_are_rejected() {
 #[tokio::test]
 pub async fn newsletters_returns_400_on_invalid_data() {
     let app = spawn_app().await;
-
-    // Act - Part 1 - Login
-    app.post_login(&serde_json::json!({
-        "username": app.test_user.username,
-        "password": app.test_user.password
-    }))
-    .await;
+    app.login_test_user().await;
 
     let test_cases = vec![
         (
@@ -55,6 +49,8 @@ pub async fn newsletters_returns_400_on_invalid_data() {
 #[tokio::test]
 pub async fn newsletters_are_not_delivered_to_unconfirmed_subscribers() {
     let app = spawn_app().await;
+    app.login_test_user().await;
+
     create_unconfirmed_subscriber(&app).await;
 
     Mock::given(any())
@@ -63,15 +59,7 @@ pub async fn newsletters_are_not_delivered_to_unconfirmed_subscribers() {
         .mount(&app.email_server)
         .await;
 
-    // Act - Part 1 - Login
-    app.post_login(&serde_json::json!({
-        "username": app.test_user.username,
-        "password": app.test_user.password
-    }))
-    .await;
-
     let newsletter_body = "title=Newsletter%20title&plaintext=Newsletter%20body%20as%20plain%20text&html=<p>Newsletter%20body%20as%20HTML</p>";
-
     let response = app.post_newsletters(newsletter_body.to_owned()).await;
 
     assert_eq!(response.status(), StatusCode::OK);
@@ -80,6 +68,8 @@ pub async fn newsletters_are_not_delivered_to_unconfirmed_subscribers() {
 #[tokio::test]
 pub async fn newsletters_are_delivered_to_confirmed_subscribers() {
     let app = spawn_app().await;
+    app.login_test_user().await;
+
     create_confirmed_subscriber(&app).await;
 
     Mock::given(any())
@@ -87,13 +77,6 @@ pub async fn newsletters_are_delivered_to_confirmed_subscribers() {
         .expect(1) // assert a single request is fired against Mailtrap
         .mount(&app.email_server)
         .await;
-
-    // Act - Part 1 - Login
-    app.post_login(&serde_json::json!({
-        "username": app.test_user.username,
-        "password": app.test_user.password
-    }))
-    .await;
 
     let newsletter_body = "title=Newsletter%20title&plaintext=Newsletter%20body%20as%20plain%20text&html=<p>Newsletter%20body%20as%20HTML</p>";
 
