@@ -4,13 +4,16 @@ use actix_web::{
     http::header::{self, ContentType},
     web, HttpResponse, ResponseError,
 };
+use actix_web_flash_messages::{FlashMessage, IncomingFlashMessages};
 use anyhow::Context;
 use reqwest::{header::HeaderValue, StatusCode};
 use sqlx::PgPool;
 
+use std::fmt::Write;
+
 use crate::{
     authentication::UserId, domain::SubscriberEmail, email_client::EmailClient,
-    error::error_chain_fmt,
+    error::error_chain_fmt, utils::see_other,
 };
 
 #[derive(serde::Deserialize)]
@@ -54,10 +57,18 @@ impl ResponseError for PublishError {
     }
 }
 
-pub async fn get_newsletter_form() -> HttpResponse {
+pub async fn get_newsletter_form(flash_messages: IncomingFlashMessages) -> HttpResponse {
+    let mut msg_html = String::new();
+    for m in flash_messages.iter() {
+        writeln!(msg_html, "<p><i>{}</i></p>", m.content()).unwrap();
+    }
+
     HttpResponse::Ok()
         .content_type(ContentType::html())
-        .body(include_str!("newsletters.html"))
+        .body(format!(
+            include_str!("newsletters.html"),
+            msg_html = msg_html
+        ))
 }
 
 #[tracing::instrument(
@@ -91,7 +102,8 @@ pub async fn publish_newsletter(
         }
     }
 
-    Ok(HttpResponse::Ok().finish())
+    FlashMessage::info("The newsletter issues has been published!").send();
+    Ok(see_other("/admin/newsletters"))
 }
 
 struct ConfirmedSubscriber {
