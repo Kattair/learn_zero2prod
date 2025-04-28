@@ -8,6 +8,46 @@ use wiremock::{
 use crate::helpers::{assert_is_redirect_to, spawn_app, ConfirmationLinks, TestApp};
 
 #[tokio::test]
+pub async fn newsletter_creation_is_idempotent() {
+    // Arrange
+    let app = spawn_app().await;
+    create_confirmed_subscriber(&app).await;
+    app.login_test_user().await;
+
+    Mock::given(path(""))
+        .and(method(Method::Post))
+        .respond_with(ResponseTemplate::new(200))
+        .expect(1)
+        .mount(&app.email_server)
+        .await;
+
+    // Act - Part 1 - Submit newsletter form
+    let form_data = format!(
+        "title=Newsletter%20title\
+        &plaintext=Newsletter%20body%20as%20plain%20text\
+        &html=<p>Newsletter%20body%20as%20HTML</p>\
+        &idempotency_key={}",
+        uuid::Uuid::new_v4().to_string()
+    );
+    let response = app.post_newsletters(form_data.clone()).await;
+    assert_is_redirect_to(&response, "/admin/newsletters");
+
+    // Act - Part 2 - Follow the redirect
+    let html = app.get_newsletters_html().await;
+    assert!(html.contains("<p><i>The newsletter issues has been published!</i></p>"));
+
+    // Act - Part 3 - Submit newslette form **again**
+    let response = app.post_newsletters(form_data).await;
+    assert_is_redirect_to(&response, "/admin/newsletters");
+
+    // Act - Part 4 - Follow the redirect
+    let html = app.get_newsletters_html().await;
+    assert!(html.contains("<p><i>The newsletter issues has been published!</i></p>"));
+
+    // Mock verifies on Drop that we have sent the newsletter email **once**
+}
+
+#[tokio::test]
 pub async fn requests_missing_authorization_are_rejected() {
     let app = spawn_app().await;
 
