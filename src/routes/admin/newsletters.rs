@@ -9,7 +9,7 @@ use crate::{
     authentication::UserId,
     domain::SubscriberEmail,
     email_client::EmailClient,
-    idempotency::IdempotencyKey,
+    idempotency::{self, IdempotencyKey},
     utils::{self, see_other},
 };
 
@@ -56,7 +56,16 @@ pub async fn publish_newsletter(
         html,
         idempotency_key,
     } = body.0;
+
     let idempotency_key: IdempotencyKey = idempotency_key.try_into().map_err(utils::e400)?;
+    if let Some(saved_response) =
+        idempotency::get_saved_response(&connection_pool, &idempotency_key, &user_id)
+            .await
+            .map_err(utils::e500)?
+    {
+        FlashMessage::info("The newsletter issues has been published!").send();
+        return Ok(saved_response);
+    }
 
     let confirmed_subscribers = get_confirmed_subscribers(&connection_pool)
         .await
@@ -78,7 +87,12 @@ pub async fn publish_newsletter(
     }
 
     FlashMessage::info("The newsletter issues has been published!").send();
-    Ok(see_other("/admin/newsletters"))
+    let response = see_other("/admin/newsletters");
+    let response =
+        idempotency::save_response(&connection_pool, &idempotency_key, &user_id, response)
+            .await
+            .map_err(utils::e500)?;
+    Ok(response)
 }
 
 struct ConfirmedSubscriber {

@@ -36,7 +36,7 @@ pub async fn newsletter_creation_is_idempotent() {
     let html = app.get_newsletters_html().await;
     assert!(html.contains("<p><i>The newsletter issues has been published!</i></p>"));
 
-    // Act - Part 3 - Submit newslette form **again**
+    // Act - Part 3 - Submit newsletter form **again**
     let response = app.post_newsletters(form_data).await;
     assert_is_redirect_to(&response, "/admin/newsletters");
 
