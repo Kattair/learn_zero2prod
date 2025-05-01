@@ -99,10 +99,16 @@ pub async fn newsletters_are_not_delivered_to_unconfirmed_subscribers() {
         .mount(&app.email_server)
         .await;
 
-    let newsletter_body = "title=Newsletter%20title&plaintext=Newsletter%20body%20as%20plain%20text&html=<p>Newsletter%20body%20as%20HTML</p>";
+    let newsletter_body = format!(
+        "title=Newsletter%20title\
+        &plaintext=Newsletter%20body%20as%20plain%20text\
+        &html=<p>Newsletter%20body%20as%20HTML</p>\
+        &idempotency_key={}",
+        uuid::Uuid::new_v4().to_string()
+    );
     let response = app.post_newsletters(newsletter_body.to_owned()).await;
 
-    assert_eq!(response.status(), StatusCode::OK);
+    assert_is_redirect_to(&response, "/admin/newsletters");
 }
 
 #[tokio::test]
@@ -118,11 +124,17 @@ pub async fn newsletters_are_delivered_to_confirmed_subscribers() {
         .mount(&app.email_server)
         .await;
 
-    let newsletter_body = "title=Newsletter%20title&plaintext=Newsletter%20body%20as%20plain%20text&html=<p>Newsletter%20body%20as%20HTML</p>";
+    let newsletter_body = format!(
+        "title=Newsletter%20title\
+        &plaintext=Newsletter%20body%20as%20plain%20text\
+        &html=<p>Newsletter%20body%20as%20HTML</p>\
+        &idempotency_key={}",
+        uuid::Uuid::new_v4().to_string()
+    );
 
     let response = app.post_newsletters(newsletter_body.to_owned()).await;
 
-    assert_eq!(response.status(), StatusCode::OK);
+    assert_is_redirect_to(&response, "/admin/newsletters");
 }
 
 async fn create_confirmed_subscriber(app: &TestApp) {

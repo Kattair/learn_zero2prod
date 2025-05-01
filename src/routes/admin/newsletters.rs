@@ -1,19 +1,16 @@
-use std::fmt::{self, Debug};
-
-use actix_web::{
-    http::header::{self, ContentType},
-    web, HttpResponse, ResponseError,
-};
+use actix_web::{http::header::ContentType, web, HttpResponse};
 use actix_web_flash_messages::{FlashMessage, IncomingFlashMessages};
 use anyhow::Context;
-use reqwest::{header::HeaderValue, StatusCode};
 use sqlx::PgPool;
 
 use std::fmt::Write;
 
 use crate::{
-    authentication::UserId, domain::SubscriberEmail, email_client::EmailClient,
-    error::error_chain_fmt, utils::see_other,
+    authentication::UserId,
+    domain::SubscriberEmail,
+    email_client::EmailClient,
+    idempotency::IdempotencyKey,
+    utils::{self, see_other},
 };
 
 #[derive(serde::Deserialize)]
@@ -21,40 +18,7 @@ pub struct BodyData {
     title: String,
     plaintext: String,
     html: String,
-}
-
-#[derive(thiserror::Error)]
-pub enum PublishError {
-    #[error("Authentication failed.")]
-    AuthError(#[source] anyhow::Error),
-    #[error(transparent)]
-    UnexpectedError(#[from] anyhow::Error),
-}
-
-impl fmt::Debug for PublishError {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        error_chain_fmt(self, f)
-    }
-}
-
-impl ResponseError for PublishError {
-    fn error_response(&self) -> HttpResponse<actix_web::body::BoxBody> {
-        match self {
-            PublishError::UnexpectedError(_) => {
-                HttpResponse::new(StatusCode::INTERNAL_SERVER_ERROR)
-            }
-            PublishError::AuthError(_) => {
-                let mut response = HttpResponse::new(StatusCode::UNAUTHORIZED);
-                let header_value = HeaderValue::from_str(r#"Basic realm="publish""#).unwrap();
-
-                response
-                    .headers_mut()
-                    .insert(header::WWW_AUTHENTICATE, header_value);
-
-                response
-            }
-        }
-    }
+    idempotency_key: String,
 }
 
 pub async fn get_newsletter_form(flash_messages: IncomingFlashMessages) -> HttpResponse {
@@ -67,7 +31,8 @@ pub async fn get_newsletter_form(flash_messages: IncomingFlashMessages) -> HttpR
         .content_type(ContentType::html())
         .body(format!(
             include_str!("newsletters.html"),
-            msg_html = msg_html
+            msg_html = msg_html,
+            idempotency_key = uuid::Uuid::new_v4()
         ))
 }
 
@@ -81,20 +46,30 @@ pub async fn publish_newsletter(
     body: web::Form<BodyData>,
     connection_pool: web::Data<PgPool>,
     email_client: web::Data<EmailClient>,
-) -> Result<HttpResponse, PublishError> {
+) -> Result<HttpResponse, actix_web::Error> {
     let user_id = user_id.into_inner();
     tracing::Span::current().record("user_id", tracing::field::display(&user_id));
-    let confirmed_subscribers = get_confirmed_subscribers(&connection_pool).await?;
+
+    let BodyData {
+        title,
+        plaintext,
+        html,
+        idempotency_key,
+    } = body.0;
+    let idempotency_key: IdempotencyKey = idempotency_key.try_into().map_err(utils::e400)?;
+
+    let confirmed_subscribers = get_confirmed_subscribers(&connection_pool)
+        .await
+        .map_err(utils::e500)?;
 
     for subscriber in confirmed_subscribers {
         match subscriber {
             Ok(subscriber) => {
                 email_client
-                    .send_email(&subscriber.email, &body.title, &body.html, &body.plaintext)
+                    .send_email(&subscriber.email, &title, &html, &plaintext)
                     .await
-                    .with_context(|| {
-                        format!("Failed to send newsletter to {}", &subscriber.email)
-                    })?;
+                    .with_context(|| format!("Failed to send newsletter to {}", &subscriber.email))
+                    .map_err(utils::e500)?;
             }
             Err(error) => {
                 tracing::warn!(error.cause_chain = ?error, "Skipping a confirmed subscriber. Their stored contact details are invalid.")
