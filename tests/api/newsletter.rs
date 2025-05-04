@@ -1,3 +1,5 @@
+use std::time::Duration;
+
 use reqwest::StatusCode;
 use wiremock::{
     http::Method,
@@ -43,6 +45,42 @@ pub async fn newsletter_creation_is_idempotent() {
     // Act - Part 4 - Follow the redirect
     let html = app.get_newsletters_html().await;
     assert!(html.contains("<p><i>The newsletter issues has been published!</i></p>"));
+
+    // Mock verifies on Drop that we have sent the newsletter email **once**
+}
+
+#[tokio::test]
+pub async fn concurrent_form_submission_is_handled_gracefully() {
+    // Arrange
+    let app = spawn_app().await;
+    create_confirmed_subscriber(&app).await;
+    app.login_test_user().await;
+
+    Mock::given(path(""))
+        .and(method(Method::Post))
+        // Delay to make it possible for a second request to arrive before the first one completes
+        .respond_with(ResponseTemplate::new(200).set_delay(Duration::from_secs(2)))
+        .expect(1)
+        .mount(&app.email_server)
+        .await;
+
+    // Act - Submit two newsletter forms concurrently
+    let form_data = format!(
+        "title=Newsletter%20title\
+        &plaintext=Newsletter%20body%20as%20plain%20text\
+        &html=<p>Newsletter%20body%20as%20HTML</p>\
+        &idempotency_key={}",
+        uuid::Uuid::new_v4().to_string()
+    );
+    let response1 = app.post_newsletters(form_data.clone());
+    let response2 = app.post_newsletters(form_data.clone());
+    let (response1, response2) = tokio::join!(response1, response2);
+
+    assert_eq!(response1.status(), response2.status());
+    assert_eq!(
+        response1.text().await.unwrap(),
+        response2.text().await.unwrap()
+    );
 
     // Mock verifies on Drop that we have sent the newsletter email **once**
 }
