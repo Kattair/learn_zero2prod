@@ -8,6 +8,8 @@ use reqwest::redirect::Policy;
 use reqwest::{header, Response, StatusCode};
 use serde_json::Value;
 use wiremock::MockServer;
+use zero2prod::email_client::EmailClient;
+use zero2prod::issue_delivery_worker::{try_execute_task, ExecutionOutcome};
 use zero2prod::startup::{get_connection_pool, Application};
 
 use sqlx::{Connection, Executor, PgConnection, PgPool};
@@ -42,6 +44,7 @@ pub struct TestApp {
     pub email_server: MockServer,
     pub test_user: TestUser,
     pub api_client: reqwest::Client,
+    pub email_client: EmailClient,
 }
 
 pub struct TestUser {
@@ -86,6 +89,18 @@ pub struct ConfirmationLinks {
 }
 
 impl TestApp {
+    pub async fn dispatch_all_pending_emails(&self) {
+        loop {
+            if let ExecutionOutcome::EmptyQueue =
+                try_execute_task(&self.connection_pool, &self.email_client)
+                    .await
+                    .unwrap()
+            {
+                break;
+            }
+        }
+    }
+
     pub async fn login_test_user(&self) -> Response {
         self.post_login(&serde_json::json!({
             "username": self.test_user.username,
@@ -236,7 +251,7 @@ pub async fn spawn_app() -> TestApp {
 
     configure_db(&configuration.database).await;
 
-    let app = Application::build(&configuration)
+    let app = Application::build(configuration.clone())
         .await
         .expect("Failed to build application.");
     let port = app.port();
@@ -255,6 +270,7 @@ pub async fn spawn_app() -> TestApp {
         email_server,
         test_user: TestUser::generate(),
         api_client: client,
+        email_client: configuration.email_client.client(),
     };
     test_app.test_user.store(&test_app.connection_pool).await;
     test_app

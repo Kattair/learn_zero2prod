@@ -6,9 +6,9 @@ use sqlx::{
     ConnectOptions,
 };
 
-use crate::{domain::SubscriberEmail, startup::HmacSecret};
+use crate::{domain::SubscriberEmail, email_client::EmailClient, startup::HmacSecret};
 
-#[derive(serde::Deserialize)]
+#[derive(serde::Deserialize, Clone)]
 pub struct Settings {
     pub database: DatabaseSettings,
     pub application: ApplicationSettings,
@@ -16,7 +16,7 @@ pub struct Settings {
     pub redis_uri: Secret<String>,
 }
 
-#[derive(serde::Deserialize)]
+#[derive(serde::Deserialize, Clone)]
 pub struct DatabaseSettings {
     pub username: String,
     pub password: Secret<String>,
@@ -26,7 +26,7 @@ pub struct DatabaseSettings {
     pub require_ssl: bool,
 }
 
-#[derive(serde::Deserialize)]
+#[derive(serde::Deserialize, Clone)]
 pub struct ApplicationSettings {
     pub host: Ipv4Addr,
     pub port: u16,
@@ -34,7 +34,7 @@ pub struct ApplicationSettings {
     pub hmac_secret: HmacSecret,
 }
 
-#[derive(serde::Deserialize)]
+#[derive(serde::Deserialize, Clone)]
 pub struct EmailClientSettings {
     pub api_url: String,
     pub sender_email: String,
@@ -71,6 +71,13 @@ impl EmailClientSettings {
 
     pub fn timeout(&self) -> Duration {
         Duration::from_millis(self.timeout_millis)
+    }
+
+    pub fn client(self) -> EmailClient {
+        let sender_email = self.sender().expect("Invalid sender email address.");
+        let timeout = self.timeout();
+
+        EmailClient::new(self.api_url, self.secret, sender_email, timeout)
     }
 }
 

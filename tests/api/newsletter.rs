@@ -39,7 +39,7 @@ pub async fn newsletter_creation_is_idempotent() {
 
     // Act - Part 2 - Follow the redirect
     let html = app.get_newsletters_html().await;
-    assert!(html.contains("<p><i>The newsletter issues has been published!</i></p>"));
+    assert!(html.contains("<p><i>The newsletter issues has been accepted!</i></p>"));
 
     // Act - Part 3 - Submit newsletter form **again**
     let response = app.post_newsletters(form_data).await;
@@ -47,8 +47,9 @@ pub async fn newsletter_creation_is_idempotent() {
 
     // Act - Part 4 - Follow the redirect
     let html = app.get_newsletters_html().await;
-    assert!(html.contains("<p><i>The newsletter issues has been published!</i></p>"));
+    assert!(html.contains("<p><i>The newsletter issues has been accepted!</i></p>"));
 
+    app.dispatch_all_pending_emails().await;
     // Mock verifies on Drop that we have sent the newsletter email **once**
 }
 
@@ -84,54 +85,8 @@ pub async fn concurrent_form_submission_is_handled_gracefully() {
         response2.text().await.unwrap()
     );
 
+    app.dispatch_all_pending_emails().await;
     // Mock verifies on Drop that we have sent the newsletter email **once**
-}
-
-#[tokio::test]
-pub async fn transient_errors_do_not_cause_duplicate_deliveries_on_retries() {
-    // Arrange
-    let app = spawn_app().await;
-    let form_data = format!(
-        "title=Newsletter%20title\
-        &plaintext=Newsletter%20body%20as%20plain%20text\
-        &html=<p>Newsletter%20body%20as%20HTML</p>\
-        &idempotency_key={}",
-        uuid::Uuid::new_v4().to_string()
-    );
-
-    create_confirmed_subscriber(&app).await;
-    create_confirmed_subscriber(&app).await;
-    app.login_test_user().await;
-
-    // Act - Part 1 - Submit newsletter form
-    when_sending_an_email()
-        .respond_with(ResponseTemplate::new(StatusCode::OK))
-        .up_to_n_times(1)
-        .expect(1)
-        .mount(&app.email_server)
-        .await;
-    when_sending_an_email()
-        .respond_with(ResponseTemplate::new(StatusCode::INTERNAL_SERVER_ERROR))
-        .up_to_n_times(1)
-        .expect(1)
-        .mount(&app.email_server)
-        .await;
-
-    let response = app.post_newsletters(form_data.clone()).await;
-    assert_eq!(response.status(), StatusCode::INTERNAL_SERVER_ERROR);
-
-    // Act - Part 2 - Retry submitting form
-    when_sending_an_email()
-        .respond_with(ResponseTemplate::new(StatusCode::OK))
-        .expect(1)
-        .named("Delivery retry")
-        .mount(&app.email_server)
-        .await;
-
-    let response = app.post_newsletters(form_data.clone()).await;
-    assert_is_redirect_to(&response, "/admin/newsletters");
-
-    // Mock verifies on Drop that we did not send duplicates
 }
 
 #[tokio::test]
@@ -196,6 +151,9 @@ pub async fn newsletters_are_not_delivered_to_unconfirmed_subscribers() {
     let response = app.post_newsletters(newsletter_body.to_owned()).await;
 
     assert_is_redirect_to(&response, "/admin/newsletters");
+
+    app.dispatch_all_pending_emails().await;
+    // Mock verifies on drop we did not send out any emails
 }
 
 #[tokio::test]
@@ -222,6 +180,9 @@ pub async fn newsletters_are_delivered_to_confirmed_subscribers() {
     let response = app.post_newsletters(newsletter_body.to_owned()).await;
 
     assert_is_redirect_to(&response, "/admin/newsletters");
+
+    app.dispatch_all_pending_emails().await;
+    // Mock verifies on drop we have sent the emails
 }
 
 fn when_sending_an_email() -> MockBuilder {

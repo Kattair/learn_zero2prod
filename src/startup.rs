@@ -29,20 +29,9 @@ pub struct HmacSecret(pub Secret<String>);
 pub struct ApplicationBaseUrl(pub String);
 
 impl Application {
-    pub async fn build(configuration: &Settings) -> Result<Application, anyhow::Error> {
+    pub async fn build(configuration: Settings) -> Result<Application, anyhow::Error> {
         let connection_pool = get_connection_pool(&configuration.database);
-
-        let email_config = &configuration.email_client;
-        let sender = email_config
-            .sender()
-            .expect("The provided sender email is not valid.");
-        let timeout = email_config.timeout();
-        let email_client = EmailClient::new(
-            email_config.api_url.clone(),
-            email_config.secret.clone(),
-            sender,
-            timeout,
-        );
+        let email_client = configuration.email_client.client();
 
         let address = format!(
             "{}:{}",

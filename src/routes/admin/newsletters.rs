@@ -45,7 +45,7 @@ pub async fn publish_newsletter(
     body: web::Form<BodyData>,
     connection_pool: web::Data<PgPool>,
 ) -> Result<HttpResponse, actix_web::Error> {
-    let success_message = FlashMessage::info("The newsletter issues has been published!");
+    let success_message = FlashMessage::info("The newsletter issues has been accepted!");
     let user_id = user_id.into_inner();
     tracing::Span::current().record("user_id", tracing::field::display(&user_id));
 
